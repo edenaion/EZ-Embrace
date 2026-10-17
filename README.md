@@ -17,3 +17,4 @@ I only care about proper attribution in source code. While attribution in binary
 Hence, unless otherwise noted, all files in this project are licensed under both the [MIT License](https://github.com/iccir/Embrace/blob/main/LICENSE) **or** the [1-clause BSD License](https://opensource.org/license/bsd-1-clause). You may choose either license.
 
 `SPDX-License-Identifier: MIT OR BSD-1-Clause`
+
