@@ -197,7 +197,7 @@ const CGFloat sTrackWidth      = 5;
 - (void) _beginUpdateWithWindowLocation:(CGPoint)windowLocation slow:(BOOL)isSlow
 {
     _startBandValue   = [_selectedBandView value];
-    _startLocation    = windowLocation;
+    _startLocation    = [_selectedBandView convertPoint:windowLocation fromView:nil];
     _draggableHeight  = [_selectedBandView draggableHeight];
     _dragIsSlow       = isSlow;
 
@@ -207,7 +207,8 @@ const CGFloat sTrackWidth      = 5;
 
 - (void) _continueUpdateWithWindowLocation:(CGPoint)windowLocation
 {
-    CGFloat delta = ((windowLocation.y - _startLocation.y) / (_draggableHeight / 2));
+    CGPoint location = [_selectedBandView convertPoint:windowLocation fromView:nil];
+    CGFloat delta = ((location.y - _startLocation.y) / (_draggableHeight / 2));
     if (_dragIsSlow) delta /= 4.0;
 
     CGFloat newValue = _startBandValue + delta;

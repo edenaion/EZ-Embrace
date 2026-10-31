@@ -1,4 +1,4 @@
-BUNDLE_IDENTIFIER_PREFIX = com.ricciadams.opensource
+BUNDLE_IDENTIFIER_PREFIX = com.ezscape
 
 #include? "../Private/Private.xcconfig"
 

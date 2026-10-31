@@ -3,12 +3,39 @@
 
 #import "Preferences.h"
 #import "HugAudioDevice.h"
-#import "EffectAdditions.h"
 
 NSString * const PreferencesDidChangeNotification = @"PreferencesDidChange";
+NSString * const TextContrastDidChangeNotification = @"TextContrastDidChange";
+NSString * const WindowBorderColorsDidChangeNotification = @"WindowBorderColorsDidChange";
+NSString * const AuditionPreferencesDidChangeNotification = @"AuditionPreferencesDidChange";
+NSString * const WindowBorderSetList = @"SetList";
+NSString * const WindowBorderCurrentTrack = @"CurrentTrack";
+NSString * const WindowBorderMusicLibrary = @"MusicLibrary";
 
 static NSString * const sDeviceDictionaryUIDKey  = @"DeviceUID";
 static NSString * const sDeviceDictionaryNameKey = @"Name";
+static NSString * const sUpcomingOtherGenreColorKey = @"upcomingOtherGenreColor";
+
+
+static NSColor *sColorFromComponents(id components)
+{
+    if (![components isKindOfClass:[NSArray class]] || [components count] != 3) return nil;
+    for (id value in components) {
+        if (![value isKindOfClass:[NSNumber class]] || !isfinite([value doubleValue]) ||
+            [value doubleValue] < 0 || [value doubleValue] > 1) return nil;
+    }
+    return [NSColor colorWithSRGBRed:[components[0] doubleValue] green:[components[1] doubleValue]
+                              blue:[components[2] doubleValue] alpha:1];
+}
+
+
+static NSArray *sComponentsFromColor(NSColor *color)
+{
+    NSColor *rgb = [color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    if (!rgb || !isfinite(rgb.redComponent) || !isfinite(rgb.greenComponent) ||
+        !isfinite(rgb.blueComponent)) return nil;
+    return @[@(rgb.redComponent), @(rgb.greenComponent), @(rgb.blueComponent)];
+}
 
 static NSDictionary *sGetDefaultValues()
 {
@@ -19,7 +46,11 @@ static NSDictionary *sGetDefaultValues()
 
     sDefaultValues = @{
         @"numberOfLayoutLines":  @2,
-        @"usesLargerText":       @NO,
+        @"textSizePercent":      @100,
+        @"textContrastPercent":  @0,
+        @"usesBoldText":         @NO,
+        @"scalesInterfaceWithWindow": @NO,
+        @"automaticallyArrangesWindows": @NO,
         @"shortensPlayedTracks": @NO,
     
         @"floatsOnTop":          @NO,
@@ -44,6 +75,7 @@ static NSDictionary *sGetDefaultValues()
         @"scriptHandlerName":       @"",
         @"allowsAllEffects":        @NO,
         @"allowsPlaybackShortcuts": @NO,
+        @"equalizerType":          @(EqualizerTypeParametric),
 
         @"keySignatureDisplayMode": @( KeySignatureDisplayModeRaw ),
         @"duplicateStatusMode":     @( DuplicateStatusModeSameFile ),
@@ -52,7 +84,10 @@ static NSDictionary *sGetDefaultValues()
         @"mainOutputSampleRate":   @(44100),
         @"mainOutputFrames":       @(2048),
         @"mainOutputUsesHogMode":  @(NO),
-        @"mainOutputResetsVolume": @(YES)
+        @"mainOutputResetsVolume": @(YES),
+        @"auditionOutputDeviceUID": @"",
+        @"auditionVolumePercent": @25,
+        @"musicLibraryDailySnapshotsEnabled": @YES
     };
     
     });
@@ -96,6 +131,10 @@ static void sSetDefaultObject(id dictionary, NSString *key, id valueToSave, id d
 
 static void sRegisterDefaults()
 {
+    NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
+    if (![userDefaults objectForKey:@"textSizePercent"]) {
+        [userDefaults setInteger:([userDefaults boolForKey:@"usesLargerText"] ? 125 : 100) forKey:@"textSizePercent"];
+    }
     NSMutableDictionary *defaults = [NSMutableDictionary dictionary];
 
     NSDictionary *defaultValuesDictionary = sGetDefaultValues();
@@ -105,8 +144,8 @@ static void sRegisterDefaults()
         sSetDefaultObject(defaults, key, value, value);
     }
 
-    // Default to a single 10-band EQ
-    [defaults setObject:@[ @{ @"name": EmbraceMappedEffect10BandEQ } ] forKey:@"effects"];
+    // Fresh installs start with one enabled, flat parametric EQ.
+    [defaults setObject:@[ @{ @"name": @"EmbraceParametricEQ", @"bypass": @NO } ] forKey:@"effects"];
 
     [[NSUserDefaults standardUserDefaults] registerDefaults:defaults];
 }
@@ -114,8 +153,55 @@ static void sRegisterDefaults()
 
 @implementation Preferences
 
+- (NSColor *) upcomingOtherGenreColor
+{
+    NSColor *saved = sColorFromComponents([[NSUserDefaults standardUserDefaults]
+        objectForKey:sUpcomingOtherGenreColorKey]);
+    return saved ?: [NSColor colorWithSRGBRed:0.78 green:0.95 blue:0.85 alpha:1];
+}
 
-+ (id) sharedInstance
+- (void) setUpcomingOtherGenreColor:(NSColor *)color
+{
+    NSArray *components = sComponentsFromColor(color);
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    if (components) [defaults setObject:components forKey:sUpcomingOtherGenreColorKey];
+    else [defaults removeObjectForKey:sUpcomingOtherGenreColorKey];
+    [[NSNotificationCenter defaultCenter] postNotificationName:PreferencesDidChangeNotification object:self];
+}
+
+- (void) resetUpcomingOtherGenreColor
+{
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:sUpcomingOtherGenreColorKey];
+    [[NSNotificationCenter defaultCenter] postNotificationName:PreferencesDidChangeNotification object:self];
+}
+
+- (NSColor *) windowBorderColorForIdentifier:(NSString *)identifier
+{
+    id colors = [[NSUserDefaults standardUserDefaults] objectForKey:@"windowBorderColors"];
+    if (![colors isKindOfClass:[NSDictionary class]]) return nil;
+    return sColorFromComponents(colors[identifier]);
+}
+
+- (void) setWindowBorderColor:(NSColor *)color forIdentifier:(NSString *)identifier
+{
+    if (![@[WindowBorderSetList, WindowBorderCurrentTrack, WindowBorderMusicLibrary] containsObject:identifier]) return;
+    id saved = [[NSUserDefaults standardUserDefaults] objectForKey:@"windowBorderColors"];
+    NSMutableDictionary *colors = [saved isKindOfClass:[NSDictionary class]] ? [saved mutableCopy] : [NSMutableDictionary dictionary];
+    NSArray *components = sComponentsFromColor(color);
+    if (components) colors[identifier] = components;
+    else [colors removeObjectForKey:identifier];
+    [[NSUserDefaults standardUserDefaults] setObject:colors forKey:@"windowBorderColors"];
+    [[NSNotificationCenter defaultCenter] postNotificationName:WindowBorderColorsDidChangeNotification object:self];
+}
+
+- (void) resetWindowBorderColors
+{
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"windowBorderColors"];
+    [[NSNotificationCenter defaultCenter] postNotificationName:WindowBorderColorsDidChangeNotification object:self];
+}
+
+
++ (instancetype) sharedInstance
 {
     static Preferences *sSharedInstance = nil;
     static dispatch_once_t onceToken;
@@ -202,6 +288,25 @@ static void sRegisterDefaults()
 }
 
 
++ (NSSet *) keyPathsForValuesAffectingUsesLargerText
+{
+    return [NSSet setWithObject:@"textSizePercent"];
+}
+
+- (BOOL) usesLargerText { return _textSizePercent > 100; }
+- (void) setUsesLargerText:(BOOL)larger { [self setTextSizePercent:larger ? 125 : 100]; }
+
+- (void) setTextSizePercent:(NSInteger)percent
+{
+    _textSizePercent = MIN(MAX(percent, 100), 200);
+}
+
+- (void) setTextContrastPercent:(NSInteger)percent
+{
+    _textContrastPercent = MIN(MAX(percent, 0), 100);
+}
+
+
 - (NSString *) _keyForTrackViewAttribute:(TrackViewAttribute)attribute
 {
     if (attribute == TrackViewAttributeAlbumArtist) {
@@ -254,6 +359,7 @@ static void sRegisterDefaults()
 - (void) _save
 {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:[self usesLargerText] forKey:@"usesLargerText"];
     
     NSDictionary *defaultValuesDictionary = sGetDefaultValues();
     for (NSString *key in defaultValuesDictionary) {
@@ -282,7 +388,10 @@ static void sRegisterDefaults()
 - (void) observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
 {
     if (object == self) {
-        [[NSNotificationCenter defaultCenter] postNotificationName:PreferencesDidChangeNotification object:self];
+        NSString *notification = [keyPath isEqualToString:@"textContrastPercent"]
+            ? TextContrastDidChangeNotification : ([keyPath hasPrefix:@"audition"]
+            ? AuditionPreferencesDidChangeNotification : PreferencesDidChangeNotification);
+        [[NSNotificationCenter defaultCenter] postNotificationName:notification object:self];
         [self _save];
     }
 }

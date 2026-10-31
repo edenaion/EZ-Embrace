@@ -7,9 +7,14 @@
 #import "AppDelegate.h"
 #import "TrackKeys.h"
 #import "WorkerService.h"
+#import "MusicLibrary.h"
+#import "MusicLibraryBackupStore.h"
+#import "Preferences.h"
+#import <iTunesLibrary/iTunesLibrary.h>
 
 
 NSString * const MusicAppManagerDidUpdateLibraryMetadataNotification = @"MusicAppManagerDidUpdateLibraryMetadata";
+NSString * const MusicAppManagerDidUpdateBrowserNotification = @"MusicAppManagerDidUpdateBrowser";
 
 
 static NSString *sGetExpandedPath(NSString *inPath)
@@ -28,6 +33,12 @@ static NSString *sGetExpandedPath(NSString *inPath)
 
     NSMutableDictionary *_pathToTrackIDMap;
     NSMutableDictionary *_trackIDToPasteboardMetadataMap;
+    BOOL _browserRequested;
+    NSUInteger _browserRequestGeneration;
+    MusicLibraryBackupStore *_backupStore;
+    dispatch_queue_t _backupQueue;
+    BOOL _backupRequestedWhenReady;
+    NSDate *_lastAutomaticBackupAttemptDate;
 }
 
 
@@ -49,11 +60,159 @@ static NSString *sGetExpandedPath(NSString *inPath)
     if ((self = [super init])) {
         _libraryCheckTimer = [NSTimer scheduledTimerWithTimeInterval:30.0 target:self selector:@selector(_checkLibrary:) userInfo:nil repeats:YES];
         [_libraryCheckTimer setTolerance:5.0];
+        _backupStore = [MusicLibraryBackupStore defaultStore];
+        _backupQueue = dispatch_queue_create("com.ezscape.EZEmbrace.music-library-backup", DISPATCH_QUEUE_SERIAL);
+        dispatch_async(_backupQueue, ^{
+            NSDate *latest = [self->_backupStore latestSnapshotDate];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self->_lastMusicLibraryBackupDate = latest;
+                [[NSNotificationCenter defaultCenter] postNotificationName:MusicAppManagerDidUpdateBrowserNotification object:self];
+            });
+        });
         
         [self _checkLibrary:nil];
+        if (@available(macOS 13.0, *)) {
+            [[NSDistributedNotificationCenter defaultCenter] addObserver:self selector:@selector(_libraryChanged:)
+                name:ITLibraryDidChangeNotification object:nil];
+        }
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_preferencesChanged:)
+            name:PreferencesDidChangeNotification object:[Preferences sharedInstance]];
+        // Keep the read-only Music mirror current regardless of the optional backup setting.
+        // Once requested, change notifications and the existing bounded poll refresh it.
+        dispatch_async(dispatch_get_main_queue(), ^{ [self refreshBrowser]; });
     }
 
     return self;
+}
+
+- (NSURL *) musicLibraryBackupDirectoryURL { return _backupStore.directoryURL; }
+
+- (void) _preferencesChanged:(NSNotification *)note
+{
+    [self _backupCurrentMirrorIfNeeded];
+}
+
+- (void) _backupCurrentMirrorIfNeeded
+{
+    Preferences *preferences = [Preferences sharedInstance];
+    if (!preferences.musicLibraryDailySnapshotsEnabled || !_browserSnapshot || _musicLibraryBackupInProgress) return;
+    NSDate *now = [NSDate date];
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    if (_lastMusicLibraryBackupDate && [calendar isDate:_lastMusicLibraryBackupDate inSameDayAsDate:now]) return;
+    // A persistent disk failure should remain visible without retrying every 30-second library poll.
+    if (_lastAutomaticBackupAttemptDate && [now timeIntervalSinceDate:_lastAutomaticBackupAttemptDate] < 30 * 60) return;
+    _lastAutomaticBackupAttemptDate = now;
+    [self _backupSnapshot:_browserSnapshot force:NO];
+}
+
+- (void) _backupSnapshot:(MusicLibrarySnapshot *)snapshot force:(BOOL)force
+{
+    if (!snapshot.isComplete || _musicLibraryBackupInProgress) return;
+    _musicLibraryBackupInProgress = YES;
+    _musicLibraryBackupError = nil;
+    [[NSNotificationCenter defaultCenter] postNotificationName:MusicAppManagerDidUpdateBrowserNotification object:self];
+    dispatch_async(_backupQueue, ^{
+        BOOL wrote = NO;
+        NSError *error = nil;
+        NSURL *url = [self->_backupStore saveSnapshot:snapshot atDate:[NSDate date] force:force didWrite:&wrote error:&error];
+        NSDictionary *envelope = url ? [MusicLibraryBackupStore verifiedEnvelopeAtURL:url error:&error] : nil;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self->_musicLibraryBackupInProgress = NO;
+            if (envelope) {
+                self->_lastMusicLibraryBackupDate = envelope[@"createdAt"];
+                self->_musicLibraryBackupError = nil;
+                EmbraceLog(@"MusicLibrary", @"%@ snapshot %@", wrote ? @"Saved" : @"Retained daily", url.lastPathComponent);
+            } else {
+                self->_musicLibraryBackupError = error.localizedDescription ?: @"Music library snapshot failed.";
+                EmbraceLog(@"MusicLibrary", @"Snapshot failed: %@", self->_musicLibraryBackupError);
+            }
+            [[NSNotificationCenter defaultCenter] postNotificationName:MusicAppManagerDidUpdateBrowserNotification object:self];
+        });
+    });
+}
+
+- (void) backupMusicLibraryNow
+{
+    NSAssert(NSThread.isMainThread, @"Music library backup requests run on the main thread");
+    if (_browserSnapshot) [self _backupSnapshot:_browserSnapshot force:YES];
+    else {
+        _backupRequestedWhenReady = YES;
+        [self refreshBrowser];
+    }
+}
+
+- (void) _libraryChanged:(NSNotification *)note
+{
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (_browserRequested) [self refreshBrowser];
+    });
+}
+
+- (void) refreshBrowser
+{
+    NSAssert([NSThread isMainThread], @"Library UI requests run on the main thread");
+    _browserRequested = YES;
+    if (_browserLoading) return;
+    _browserLoading = YES;
+    _browserError = nil;
+    NSUInteger generation = ++_browserRequestGeneration;
+    [[NSNotificationCenter defaultCenter] postNotificationName:MusicAppManagerDidUpdateBrowserNotification object:self];
+    void (^finish)(NSDictionary *, NSString *) = ^(NSDictionary *dictionary, NSString *message) {
+        // Snapshot validation and search indexing stay off the playback/UI thread.
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            MusicLibrarySnapshot *snapshot = dictionary ? [[MusicLibrarySnapshot alloc] initWithDictionary:dictionary] : nil;
+            NSString *validationMessage = message;
+            if (snapshot && !snapshot.isComplete) {
+                snapshot = nil;
+                validationMessage = @"Music returned an incomplete library scan. The last known good mirror was preserved.";
+            }
+            NSMutableDictionary *trimMetadata = [NSMutableDictionary dictionary];
+            for (NSDictionary *track in snapshot.tracks) {
+                NSTimeInterval start = [track[@"startTime"] doubleValue];
+                NSTimeInterval stop = [track[@"stopTime"] doubleValue];
+                NSURL *url = [NSURL URLWithString:track[@"location"]];
+                if ((!start && !stop) || !url.isFileURL) continue;
+                MusicAppLibraryMetadata *metadata = [[MusicAppLibraryMetadata alloc] init];
+                metadata.startTime = start;
+                metadata.stopTime = stop;
+                trimMetadata[sGetExpandedPath(url.path)] = metadata;
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (generation != _browserRequestGeneration || !_browserLoading) return;
+                _browserLoading = NO;
+                _browserError = validationMessage;
+                if (snapshot) {
+                    _browserSnapshot = snapshot;
+                    _lastLibraryRefreshDate = [NSDate date];
+                    [self _applyTrimMetadata:trimMetadata];
+                    BOOL forceBackup = _backupRequestedWhenReady;
+                    _backupRequestedWhenReady = NO;
+                    if (forceBackup || ((Preferences *)[Preferences sharedInstance]).musicLibraryDailySnapshotsEnabled) {
+                        [self _backupSnapshot:snapshot force:forceBackup];
+                    }
+                }
+                [[NSNotificationCenter defaultCenter] postNotificationName:MusicAppManagerDidUpdateBrowserNotification object:self];
+            });
+        });
+    };
+    id<WorkerProtocol> worker = [GetAppDelegate() workerProxyWithErrorHandler:^(NSError *error) {
+        finish(nil, @"The library reader disconnected. Refresh to try again.");
+    }];
+    [worker performMusicLibraryFetchWithReply:finish];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (generation == _browserRequestGeneration && _browserLoading) {
+            finish(nil, @"The library scan timed out. Check library access, then refresh.");
+        }
+    });
+}
+
+- (void) _applyTrimMetadata:(NSMutableDictionary *)metadata
+{
+    _didParseLibrary = YES;
+    if (![_pathToLibraryMetadataMap isEqualToDictionary:metadata]) {
+        _pathToLibraryMetadataMap = metadata;
+        [[NSNotificationCenter defaultCenter] postNotificationName:MusicAppManagerDidUpdateLibraryMetadataNotification object:self];
+    }
 }
 
 
@@ -61,6 +220,10 @@ static NSString *sGetExpandedPath(NSString *inPath)
 
 - (void) _checkLibrary:(NSTimer *)timer
 {
+    // The app can stay open across midnight during a set. This makes "daily" independent
+    // of launches and Music library edits while reusing the existing bounded poll timer.
+    [self _backupCurrentMirrorIfNeeded];
+
     NSURL *libraryURL = nil;
     
     // Get URL for "iTunes Library.itl"
@@ -99,6 +262,7 @@ static NSString *sGetExpandedPath(NSString *inPath)
         NSTimeInterval timeInterval = [modificationDate timeIntervalSinceReferenceDate];
         
         if (timeInterval > _lastLibraryParseTime) {
+            if (_browserRequested) [self refreshBrowser];
             if (_lastLibraryParseTime) {
                 EmbraceLog(@"MusicAppManager", @"Music.app Library modified!");
             }
@@ -123,12 +287,7 @@ static NSString *sGetExpandedPath(NSString *inPath)
                 }
 
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    _didParseLibrary = YES;
-
-                    if (![_pathToLibraryMetadataMap isEqualToDictionary:pathToLibraryMetadataMap]) {
-                        _pathToLibraryMetadataMap = pathToLibraryMetadataMap;
-                        [[NSNotificationCenter defaultCenter] postNotificationName:MusicAppManagerDidUpdateLibraryMetadataNotification object:self];
-                    }
+                    [self _applyTrimMetadata:pathToLibraryMetadataMap];
                 });
             }];
         }
@@ -283,6 +442,15 @@ static NSString *sGetExpandedPath(NSString *inPath)
     // Step 2, Fill otherFileURLs with NSPasteboardTypeFileURL/kPasteboardTypeFileURLPromise
     {
         for (NSPasteboardItem *item in [pasteboard pasteboardItems]) {
+            id playlistLocations = [item propertyListForType:MusicLibraryPlaylistPasteboardType];
+            if ([playlistLocations isKindOfClass:[NSArray class]]) {
+                for (id location in playlistLocations) {
+                    if (![location isKindOfClass:[NSString class]]) continue;
+                    NSURL *url = [NSURL URLWithString:location];
+                    if (url.isFileURL) [otherFileURLs addObject:url];
+                }
+                continue;
+            }
             NSArray *types = [item types];
 
             BOOL hasPromise        = [types containsObject:(id)kPasteboardTypeFileURLPromise];

@@ -44,7 +44,6 @@ typedef NS_ENUM(NSInteger, PlaybackAction) {
 
 - (void) copyToPasteboard:(NSPasteboard *)pasteboard;
 - (void) exportToFile;
-- (void) exportToPlaylist;
 
 - (void) detectDuplicates;
 

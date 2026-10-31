@@ -2,247 +2,136 @@
 // MIT License (or) 1-clause BSD License
 
 #import "SetlistMeterView.h"
-#import "SetlistProgressBar.h"
 #import "HugMeterData.h"
 
-@interface SetlistMeterViewHeldDot : NSView
+static double sDecibels(float level)
+{
+    return isfinite(level) && level > 0 ? MAX(-60, MIN(0, 20 * log10(level))) : -60;
+}
+
+@interface SetlistLevelBar : NSView
+@property (nonatomic, strong) HugMeterData *meterData;
+@property (nonatomic, copy) NSString *channelName;
 @end
 
+@implementation SetlistLevelBar
 
-@interface SetlistMeterViewLimiterDot : NSView
-@property (nonatomic, getter=isOn) BOOL on;
+- (void) setMeterData:(HugMeterData *)meterData
+{
+    if ([_meterData isEqual:meterData] || _meterData == meterData) return;
+    _meterData = meterData;
+    [self setNeedsDisplay:YES];
+}
+
+- (void) drawRect:(NSRect)dirtyRect
+{
+    NSRect bounds = NSInsetRect([self bounds], 1, 0);
+    CGFloat barWidth = MAX(0, bounds.size.width - 8);
+    NSInteger segments = MAX(1, floor(barWidth / 5));
+    CGFloat segmentWidth = barWidth / segments;
+    CGFloat fraction = (sDecibels([_meterData peakLevel]) + 60) / 60;
+    NSInteger filled = ceil(fraction * segments);
+    for (NSInteger i = 0; i < segments; i++) {
+        double decibels = -60 + 60.0 * (i + 1) / segments;
+        NSColor *color = [NSColor separatorColor];
+        if (i < filled) {
+            color = decibels <= -12 ? [NSColor systemGreenColor] :
+                decibels < -3 ? [NSColor systemOrangeColor] : [NSColor systemRedColor];
+        }
+        [color set];
+        NSRect segment = NSMakeRect(bounds.origin.x + i * segmentWidth, bounds.origin.y, MAX(0, segmentWidth - 1), bounds.size.height);
+        [[NSBezierPath bezierPathWithRoundedRect:segment xRadius:1 yRadius:1] fill];
+    }
+    if ([_meterData heldLevel] > 0) {
+        CGFloat held = (sDecibels([_meterData heldLevel]) + 60) / 60;
+        [[NSColor labelColor] set];
+        NSRectFill(NSMakeRect(bounds.origin.x + MAX(0, MIN(barWidth - 2, held * barWidth)), bounds.origin.y, 2, bounds.size.height));
+    }
+    BOOL overloaded = [_meterData isLimiterActive] || [_meterData peakLevel] >= 1 || !isfinite([_meterData peakLevel]);
+    [(overloaded ? [NSColor systemRedColor] : [NSColor separatorColor]) set];
+    CGFloat dot = MIN(6, bounds.size.height);
+    [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(NSMaxX(bounds) - dot, NSMidY(bounds) - dot / 2, dot, dot)] fill];
+}
+
+- (BOOL) isAccessibilityElement { return YES; }
+- (NSString *) accessibilityRole { return NSAccessibilityLevelIndicatorRole; }
+- (NSString *) accessibilityLabel { return _channelName; }
+- (id) accessibilityValue { return @(sDecibels([_meterData peakLevel])); }
+- (id) accessibilityMinValue { return @(-60); }
+- (id) accessibilityMaxValue { return @0; }
+- (NSString *) accessibilityValueDescription
+{
+    NSString *level = [_meterData peakLevel] > 0 ? [NSString stringWithFormat:@"%.1f dBFS", sDecibels([_meterData peakLevel])] : NSLocalizedString(@"Silence", nil);
+    return [_meterData isLimiterActive] || [_meterData peakLevel] >= 1 ?
+        [level stringByAppendingString:NSLocalizedString(@", overload or safety limiter active", nil)] : level;
+}
 @end
-
 
 @implementation SetlistMeterView {
-    SetlistProgressBar *_leftChannelBar;
-    SetlistProgressBar *_rightChannelBar;
-
-    SetlistMeterViewHeldDot *_leftHeldDot;
-    SetlistMeterViewHeldDot *_rightHeldDot;
-
-    SetlistMeterViewLimiterDot *_leftLimiterDot;
-    SetlistMeterViewLimiterDot *_rightLimiterDot;
-
-    float _leftPeakLevel;
-    float _leftHeldLevel;
-    BOOL  _leftLimiterActive;
-
-    float _rightPeakLevel;
-    float _rightHeldLevel;
-    BOOL  _rightLimiterActive;
+    SetlistLevelBar *_leftChannelBar;
+    SetlistLevelBar *_rightChannelBar;
 }
 
-
-- (instancetype) initWithFrame:(NSRect)frameRect
++ (NSColor *) colorForPeakLevel:(float)peak limiterActive:(BOOL)limiterActive
 {
-    if ((self = [super initWithFrame:frameRect])) {
-        [self _commonLevelMeterInit];
-    }
-    
+    if (limiterActive || !isfinite(peak) || peak >= pow(10, -3.0 / 20)) return [NSColor systemRedColor];
+    if (peak >= pow(10, -12.0 / 20)) return [NSColor systemOrangeColor];
+    return [NSColor systemGreenColor];
+}
+
+- (instancetype) initWithFrame:(NSRect)frame
+{
+    if ((self = [super initWithFrame:frame])) [self _commonLevelMeterInit];
     return self;
 }
-
 
 - (instancetype) initWithCoder:(NSCoder *)coder
 {
-    if ((self = [super initWithCoder:coder])) {
-        [self _commonLevelMeterInit];
-    }
-    
+    if ((self = [super initWithCoder:coder])) [self _commonLevelMeterInit];
     return self;
 }
 
-
 - (void) _commonLevelMeterInit
 {
-    [self setWantsLayer:YES];
-    [self setLayer:[CALayer layer]];
-    [self setLayerContentsRedrawPolicy:NSViewLayerContentsRedrawNever];
     [self setAutoresizesSubviews:NO];
-
-    _leftChannelBar  = [[SetlistProgressBar alloc] initWithFrame:CGRectZero];
-    _rightChannelBar = [[SetlistProgressBar alloc] initWithFrame:CGRectZero];
-    
-    _leftHeldDot     = [[SetlistMeterViewHeldDot alloc] initWithFrame:CGRectZero];
-    _rightHeldDot    = [[SetlistMeterViewHeldDot alloc] initWithFrame:CGRectZero];
-
-    _leftLimiterDot  = [[SetlistMeterViewLimiterDot alloc] initWithFrame:CGRectZero];
-    _rightLimiterDot = [[SetlistMeterViewLimiterDot alloc] initWithFrame:CGRectZero];
-
-    [_leftHeldDot  setHidden:YES];
-    [_rightHeldDot setHidden:YES];
-    
+    _leftChannelBar = [[SetlistLevelBar alloc] initWithFrame:NSZeroRect];
+    _rightChannelBar = [[SetlistLevelBar alloc] initWithFrame:NSZeroRect];
+    [_leftChannelBar setChannelName:NSLocalizedString(@"Left output level", nil)];
+    [_rightChannelBar setChannelName:NSLocalizedString(@"Right output level", nil)];
+    NSString *help = NSLocalizedString(@"Output peaks in dBFS. Green below -12 dBFS; amber from -12 to -3 dBFS; red near 0 dBFS. The separate red dot indicates overload or safety limiter activity.", nil);
+    [self setToolTip:help];
+    [_leftChannelBar setToolTip:help];
+    [_rightChannelBar setToolTip:help];
     [self addSubview:_leftChannelBar];
     [self addSubview:_rightChannelBar];
-
-    [self addSubview:_leftHeldDot];
-    [self addSubview:_rightHeldDot];
-
-    [self addSubview:_leftLimiterDot];
-    [self addSubview:_rightLimiterDot];
 }
-
 
 - (void) layout
 {
-    NSRect bounds = [self bounds];
-    CGFloat barHeight = 4;
-    
-    bounds = NSInsetRect(bounds, 1, 0);
-
-    NSRect leftChannelFrame = bounds;
-    leftChannelFrame.size.height = barHeight;
-    leftChannelFrame.origin.y = 6;
-
-    NSRect rightChannelFrame = leftChannelFrame;
-    rightChannelFrame.origin.y = 0;
-
-    leftChannelFrame.size.width  -= 4;
-    rightChannelFrame.size.width -= 4;
-
-    NSRect leftLimiterFrame  = leftChannelFrame;
-    NSRect rightLimiterFrame = rightChannelFrame;
-    
-    leftLimiterFrame.size.width = rightLimiterFrame.size.width = 4;
-    leftLimiterFrame.origin.x   = rightLimiterFrame.origin.x = CGRectGetMaxX(leftChannelFrame) + 1;
-   
-    void (^layoutHeldDot)(NSView *, NSRect, float) = ^(NSView *peakDot, NSRect channelFrame, float level) {
-        float power = cbrt(level);
-        
-        CGFloat peakX = power * (channelFrame.size.width - 2);
-        if (peakX < 0) peakX  = 0;
-
-        CGFloat alpha = 0;
-        if (peakX < 1) {
-            alpha = 0;
-        } else if (peakX < 10) {
-            alpha = peakX / 10.0;
-        } else {
-            alpha = 1.0;
-        }
-
-        peakX += 1;
-
-        NSRect dotFrame = channelFrame;
-        dotFrame.size.width = dotFrame.size.height = 4;
-        dotFrame.origin.x = round(peakX - 2);
-
-        [peakDot setAlphaValue:alpha];
-        [peakDot setFrame:dotFrame];
-    };
-    
-    [_leftChannelBar  setFrame:leftChannelFrame];
-    [_rightChannelBar setFrame:rightChannelFrame];
-
-    [_leftLimiterDot  setFrame:leftLimiterFrame];
-    [_rightLimiterDot setFrame:rightLimiterFrame];
-
-    layoutHeldDot(_leftHeldDot,  leftChannelFrame,  [_leftMeterData heldLevel]);
-    layoutHeldDot(_rightHeldDot, rightChannelFrame, [_rightMeterData heldLevel]);
+    [super layout];
+    CGFloat height = MAX(1, ([self bounds].size.height - 2) / 2);
+    [_leftChannelBar setFrame:NSMakeRect(0, height + 2, [self bounds].size.width, height)];
+    [_rightChannelBar setFrame:NSMakeRect(0, 0, [self bounds].size.width, height)];
 }
-
-
-#pragma mark - Window Listener
 
 - (void) windowDidUpdateMain:(EmbraceWindow *)window
 {
-    [_leftChannelBar  windowDidUpdateMain:window];
-    [_rightChannelBar windowDidUpdateMain:window];
+    [_leftChannelBar setNeedsDisplay:YES];
+    [_rightChannelBar setNeedsDisplay:YES];
 }
 
-
-#pragma mark - Accessors
-
-- (void) setLeftMeterData: (HugMeterData *) leftMeterData
-           rightMeterData: (HugMeterData *) rightMeterData
+- (void) setLeftMeterData:(HugMeterData *)leftMeterData rightMeterData:(HugMeterData *)rightMeterData
 {
-    if (leftMeterData  != _leftMeterData ||
-        rightMeterData != _rightMeterData ||
-        ![leftMeterData  isEqual:_leftMeterData] ||
-        ![rightMeterData isEqual:_rightMeterData]
-    ) {
-        _leftMeterData  = leftMeterData;
-        _rightMeterData = rightMeterData;
-
-        CGFloat leftPercent  = cbrt([leftMeterData  peakLevel]);
-        CGFloat rightPercent = cbrt([rightMeterData peakLevel]);
-
-        [_leftChannelBar  setPercentage:leftPercent];
-        [_rightChannelBar setPercentage:rightPercent];
-        
-        [_leftLimiterDot  setOn:[leftMeterData  isLimiterActive]];
-        [_rightLimiterDot setOn:[rightMeterData isLimiterActive]];
-
-        [self setNeedsLayout:YES];
-    }
+    _leftMeterData = leftMeterData;
+    _rightMeterData = rightMeterData;
+    [_leftChannelBar setMeterData:leftMeterData];
+    [_rightChannelBar setMeterData:rightMeterData];
 }
-
 
 - (void) setMetering:(BOOL)metering
 {
-    if (_metering != metering) {
-        _metering = metering;
-        _leftMeterData  = nil;
-        _rightMeterData = nil;
-        
-        [_leftChannelBar  setPercentage:0];
-        [_rightChannelBar setPercentage:0];
-        
-        [_leftHeldDot  setHidden:!metering];
-        [_rightHeldDot setHidden:!metering];
-
-        [_leftLimiterDot  setOn:NO];
-        [_rightLimiterDot setOn:NO];
-
-        [self setNeedsLayout:YES];
-    }
+    if (_metering == metering) return;
+    _metering = metering;
+    [self setLeftMeterData:nil rightMeterData:nil];
 }
-
-
-@end
-
-
-@implementation SetlistMeterViewHeldDot
-
-
-- (void) drawRect:(CGRect)rect
-{
-    CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
-    
-    [[NSColor colorNamed:@"MeterMarker"] set];
-    CGContextFillEllipseInRect(context, [self bounds]);
-}
-
-
-@end
-
-
-@implementation SetlistMeterViewLimiterDot
-
-
-- (void) drawRect:(CGRect)rect
-{
-    CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
-
-    if (_on) {
-        [[NSColor colorNamed:@"MeterRed"] set];
-
-    } else {
-        [[NSColor colorNamed:@"MeterUnfilled"] set];
-    }
-    
-    CGContextFillEllipseInRect(context, [self bounds]);
-}
-
-
-- (void) setOn:(BOOL)on
-{
-    if (_on != on) {
-        _on = on;
-        [self setNeedsDisplay:YES];
-    }
-}
-
-
 @end

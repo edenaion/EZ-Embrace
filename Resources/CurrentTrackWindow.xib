@@ -22,15 +22,15 @@
         <window allowsToolTipsWhenApplicationIsInactive="NO" autorecalculatesKeyViewLoop="NO" restorable="NO" releasedWhenClosed="NO" visibleAtLaunch="NO" appearanceType="aqua" frameAutosaveName="" animationBehavior="default" id="1">
             <windowStyleMask key="styleMask" titled="YES" closable="YES" resizable="YES" fullSizeContentView="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
-            <rect key="contentRect" x="196" y="240" width="520" height="68"/>
+            <rect key="contentRect" x="196" y="240" width="520" height="144"/>
             <rect key="screenRect" x="0.0" y="0.0" width="2048" height="1127"/>
-            <value key="minSize" type="size" width="320" height="48"/>
+            <value key="minSize" type="size" width="400" height="144"/>
             <view key="contentView" wantsLayer="YES" id="2">
-                <rect key="frame" x="0.0" y="0.0" width="520" height="68"/>
+                <rect key="frame" x="0.0" y="0.0" width="520" height="144"/>
                 <autoresizingMask key="autoresizingMask"/>
                 <subviews>
                     <visualEffectView blendingMode="behindWindow" material="sidebar" state="active" translatesAutoresizingMaskIntoConstraints="NO" id="HzN-7t-NZn">
-                        <rect key="frame" x="0.0" y="0.0" width="520" height="68"/>
+                        <rect key="frame" x="0.0" y="0.0" width="520" height="144"/>
                     </visualEffectView>
                 </subviews>
                 <constraints>
@@ -47,7 +47,7 @@
         </window>
         <userDefaultsController representsSharedInstance="YES" id="9oV-Bp-vhx"/>
         <customView id="Mjy-qK-rWI" userLabel="Main View" customClass="CurrentTrackControllerMainView">
-            <rect key="frame" x="0.0" y="0.0" width="520" height="54"/>
+            <rect key="frame" x="0.0" y="0.0" width="520" height="144"/>
             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
             <subviews>
                 <customView translatesAutoresizingMaskIntoConstraints="NO" id="3Er-jp-xjF" customClass="WaveformView">
@@ -92,10 +92,9 @@
             </subviews>
             <constraints>
                 <constraint firstItem="MXh-dj-c92" firstAttribute="leading" secondItem="3Er-jp-xjF" secondAttribute="trailing" id="59a-mN-Hw6"/>
-                <constraint firstItem="3Er-jp-xjF" firstAttribute="top" secondItem="Mjy-qK-rWI" secondAttribute="top" constant="2" id="77P-oc-YUz"/>
-                <constraint firstItem="MXh-dj-c92" firstAttribute="centerY" secondItem="Mjy-qK-rWI" secondAttribute="centerY" id="AuC-1t-lXd"/>
+                <constraint firstItem="MXh-dj-c92" firstAttribute="centerY" secondItem="3Er-jp-xjF" secondAttribute="centerY" id="AuC-1t-lXd"/>
                 <constraint firstAttribute="trailing" secondItem="MXh-dj-c92" secondAttribute="trailing" id="Cb6-Ka-OVH"/>
-                <constraint firstItem="AO9-lc-SHt" firstAttribute="centerY" secondItem="Mjy-qK-rWI" secondAttribute="centerY" id="FC7-zI-lPn"/>
+                <constraint firstItem="AO9-lc-SHt" firstAttribute="centerY" secondItem="3Er-jp-xjF" secondAttribute="centerY" id="FC7-zI-lPn"/>
                 <constraint firstItem="vU8-Lz-QA3" firstAttribute="centerX" secondItem="Mjy-qK-rWI" secondAttribute="centerX" id="IBE-vn-JUZ"/>
                 <constraint firstAttribute="bottom" secondItem="3Er-jp-xjF" secondAttribute="bottom" constant="2" id="UBo-dd-H9C"/>
                 <constraint firstItem="AO9-lc-SHt" firstAttribute="leading" secondItem="Mjy-qK-rWI" secondAttribute="leading" id="WHq-KJ-fdu"/>

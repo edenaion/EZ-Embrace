@@ -2,6 +2,7 @@
 // MIT License (or) 1-clause BSD License
 
 #import "EffectsController.h"
+#import "InterfaceAppearance.h"
 
 #import "EditEffectController.h"
 #import "AppDelegate.h"
@@ -13,7 +14,8 @@
 
 
 typedef NS_ENUM(NSInteger, EffectCategory) {
-    EffectCategoryEqualizers = 1,
+    EffectCategoryRestoration = 1,
+    EffectCategoryEqualizers,
     EffectCategoryFilters,
     EffectCategoryDynamics,
     EffectCategoryOther
@@ -25,8 +27,11 @@ static EffectCategory sGetCategory(NSString *name)
     EffectCategory result = EffectCategoryOther;
 
     NSDictionary *map = @{
-        @"EmbraceGraphicEQ10":    @( EffectCategoryEqualizers ),
-        @"EmbraceGraphicEQ31":    @( EffectCategoryEqualizers ),
+        EmbraceEffectDeclick:       @( EffectCategoryRestoration ),
+        EmbraceEffectDehum:         @( EffectCategoryRestoration ),
+        EmbraceMappedEffect10BandEQ: @( EffectCategoryEqualizers ),
+        EmbraceMappedEffect31BandEQ: @( EffectCategoryEqualizers ),
+        EmbraceEffectParametricEQ:   @( EffectCategoryEqualizers ),
 
         @"AUBandpass":            @( EffectCategoryFilters ),
         @"AUParametricEQ":        @( EffectCategoryFilters ),
@@ -97,11 +102,12 @@ static EffectCategory sGetCategory(NSString *name)
     [[self tableView] setDoubleAction:@selector(editEffect:)];
 
     [[self window] setExcludedFromWindowsMenu:YES];
-    
+
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_handlePreferencesDidChange:) name:PreferencesDidChangeNotification object:nil];
     
     [self _buildAddButtonMenu];
     [self _updateMenuItemVisibility];
+    [InterfaceAppearance installInWindow:[self window]];
 }
 
 
@@ -141,6 +147,8 @@ static EffectCategory sGetCategory(NSString *name)
 
     for (EffectType *type in allEffectTypes) {
         NSString *name = [type name];
+        if (EmbraceEffectNameIsManagedEqualizer(name) &&
+            ![name isEqualToString:EmbraceEffectParametricEQ]) continue;
         EffectCategory category = sGetCategory(name);
         NSString *friendlyName = [type friendlyName];
 
@@ -285,7 +293,20 @@ static EffectCategory sGetCategory(NSString *name)
     }
 
     EffectType *type = representedObject;
-    
+    if (EmbraceEffectNameIsManagedEqualizer(type.name)) {
+        if (![self.player selectEqualizerType:EqualizerTypeParametric]) {
+            NSBeep();
+            return;
+        }
+        for (Effect *existing in self.player.effects) {
+            if ([existing.type.name isEqualToString:EmbraceEffectParametricEQ]) {
+                [[GetAppDelegate() editControllerForEffect:existing] showWindow:self];
+                return;
+            }
+        }
+        return;
+    }
+
     Effect *effect = [Effect effectWithEffectType:type];
     if (effect) [[self effectsArrayController] addObject:effect];
 }
@@ -314,12 +335,19 @@ static EffectCategory sGetCategory(NSString *name)
     NSArrayController *arrayController = [self effectsArrayController];
 
     NSArray *selectedObjects = [arrayController selectedObjects];
-    
+    NSMutableArray *deletableObjects = [NSMutableArray array];
+    BOOL selectedParametricEQ = NO;
     for (Effect *effect in selectedObjects) {
+        if ([effect.type.name isEqualToString:EmbraceEffectParametricEQ]) selectedParametricEQ = YES;
+        else [deletableObjects addObject:effect];
+    }
+
+    for (Effect *effect in deletableObjects) {
         [GetAppDelegate() closeEditControllerForEffect:effect];
     }
     
-    [arrayController removeObjects:selectedObjects];
+    [arrayController removeObjects:deletableObjects];
+    if (selectedParametricEQ) NSBeep();
 }
 
 

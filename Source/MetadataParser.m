@@ -87,6 +87,20 @@ static NSInteger sGetYear(NSString *yearString)
     return 0;
 }
 
+static NSString *sGetSanitizedString(NSString *string)
+{
+    for (NSCharacterSet *characters in @[
+        [NSCharacterSet newlineCharacterSet],
+        [NSCharacterSet controlCharacterSet],
+        [NSCharacterSet illegalCharacterSet]
+    ]) {
+        if ([string rangeOfCharacterFromSet:characters].location == NSNotFound) continue;
+        NSString *replacement = [characters isEqual:[NSCharacterSet newlineCharacterSet]] ? @" " : @"";
+        string = [[string componentsSeparatedByCharactersInSet:characters] componentsJoinedByString:replacement];
+    }
+    return string;
+}
+
 
 @implementation MetadataParser {
     NSMutableDictionary *_metadata;
@@ -107,16 +121,6 @@ static NSInteger sGetYear(NSString *yearString)
 
 - (void) _parseUsingAVAsset:(AVAsset *)asset intoDictionary:(NSMutableDictionary *)intoDictionary
 {
-    __auto_type getSanitizedString = ^NSString *(NSString *inString, NSCharacterSet *characterSet, NSString *replacement) {
-        if ([inString rangeOfCharacterFromSet:characterSet].location == NSNotFound) {
-            return inString;
-        }
-
-        NSArray *components = [inString componentsSeparatedByCharactersInSet:characterSet];
-        
-        return [components componentsJoinedByString:replacement];
-    };
-
     void (^parseMetadataItem)(AVMetadataItem *, NSMutableDictionary *) = ^(AVMetadataItem *item, NSMutableDictionary *dictionary) {
         id commonKey = [item commonKey];
         id key       = [item key];
@@ -167,13 +171,9 @@ static NSInteger sGetYear(NSString *yearString)
             stringValue = [dictionaryValue objectForKey:@"text"];
         }
 
-        // Sanitize string
-        if (stringValue) {
-            stringValue = getSanitizedString(stringValue, [NSCharacterSet controlCharacterSet], @"");
-            stringValue = getSanitizedString(stringValue, [NSCharacterSet illegalCharacterSet], @"");
-            stringValue = getSanitizedString(stringValue, [NSCharacterSet newlineCharacterSet], @" ");
-        }
-        
+        // Clean before parsing numeric tags as well as before persisting strings.
+        if (stringValue) stringValue = sGetSanitizedString(stringValue);
+
         if (!numberValue) {
             if ([value isKindOfClass:[NSData class]]) {
                 NSData *data = (NSData *)value;
@@ -481,6 +481,14 @@ static NSInteger sGetYear(NSString *yearString)
 
         } else {
             if (asset) [self _parseUsingAVAsset:asset intoDictionary:_metadata];
+        }
+
+        // Apply the same cleanup to AVFoundation, AudioToolbox, custom tags, and fallback titles.
+        // AIFF's AudioToolbox title can include its terminating NUL.
+        for (NSString *key in [_metadata allKeys]) {
+            id value = [_metadata objectForKey:key];
+            if (![value isKindOfClass:[NSString class]]) continue;
+            [_metadata setObject:sGetSanitizedString(value) forKey:key];
         }
     }
     

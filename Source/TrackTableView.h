@@ -11,6 +11,7 @@ extern NSColor * const TrackTableViewGetRowHighlightColor(BOOL emphasized);
 
 @interface TrackTableView : NSTableView
 @property (nonatomic, readonly) NSInteger rowWithMouseInside;
+- (void)finishDragModification;
 @end
 
 

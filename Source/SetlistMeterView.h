@@ -7,6 +7,8 @@
 
 @interface SetlistMeterView : NSView <EmbraceWindowListener>
 
++ (NSColor *) colorForPeakLevel:(float)peak limiterActive:(BOOL)limiterActive;
+
 @property (nonatomic, getter=isMetering) BOOL metering;
 
 - (void) setLeftMeterData:(HugMeterData *)leftMeterData

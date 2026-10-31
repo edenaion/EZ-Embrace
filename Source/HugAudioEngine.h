@@ -15,8 +15,16 @@
               stopTime: (NSTimeInterval) stopTime
                padding: (NSTimeInterval) padding;
 
+- (BOOL) playAudioFile:(HugAudioFile *)file
+            startTime:(NSTimeInterval)startTime
+             stopTime:(NSTimeInterval)stopTime
+              padding:(NSTimeInterval)padding
+          initialTime:(NSTimeInterval)initialTime;
+
 // Stops playback of the audio file
 - (void) stopPlayback;
+
+- (BOOL) seekToTime:(NSTimeInterval)time;
 
 // Stops the actual audio hardware
 - (void) stopHardware;

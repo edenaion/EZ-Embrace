@@ -4,6 +4,7 @@
 #if DEBUG
 
 #import "DebugController.h"
+#import "InterfaceAppearance.h"
 #import "Player.h"
 #import "SetlistController.h"
 #import "AppDelegate.h"
@@ -20,6 +21,12 @@
 - (NSString *) windowNibName
 {
     return @"DebugWindow";
+}
+
+- (void) windowDidLoad
+{
+    [super windowDidLoad];
+    [InterfaceAppearance installInWindow:[self window]];
 }
 
 

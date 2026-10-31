@@ -8,19 +8,15 @@
     <objects>
         <customObject id="-2" userLabel="File's Owner" customClass="PreferencesController">
             <connections>
-                <outlet property="advancedItem" destination="Sd7-ph-OZb" id="q9h-vj-Vna"/>
                 <outlet property="advancedPane" destination="EW9-yV-OXP" id="piC-nY-GTp"/>
-                <outlet property="appearanceItem" destination="X9F-cn-Knh" id="f8Z-LE-czr"/>
                 <outlet property="appearancePane" destination="UoV-Kb-Ud2" id="oq1-pW-PrU"/>
                 <outlet property="framesPopUp" destination="hcU-l9-txy" id="2EJ-HM-jmP"/>
-                <outlet property="generalItem" destination="anK-jv-iEB" id="HEp-mR-kV8"/>
                 <outlet property="generalPane" destination="wiI-3h-8ky" id="F5y-do-1I9"/>
                 <outlet property="hogModeButton" destination="r1w-Tf-Z6v" id="7iy-aD-jtY"/>
                 <outlet property="mainDevicePopUp" destination="ZQs-XX-Hj2" id="yFC-Wj-5lN"/>
                 <outlet property="resetVolumeButton" destination="TP9-Tf-GVC" id="hRq-LZ-bpR"/>
                 <outlet property="sampleRatePopUp" destination="GT5-ag-OUL" id="hoQ-Us-F3D"/>
                 <outlet property="scriptHandlerPopUp" destination="MVK-di-o8T" id="W6U-Sd-Zc4"/>
-                <outlet property="toolbar" destination="hoP-hc-kjO" id="9bo-RQ-u21"/>
                 <outlet property="window" destination="1" id="CXg-pP-XyZ"/>
             </connections>
         </customObject>
@@ -35,34 +31,6 @@
                 <rect key="frame" x="0.0" y="0.0" width="420" height="180"/>
                 <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
             </view>
-            <toolbar key="toolbar" implicitIdentifier="38BFB752-B595-4AB6-8241-959620DD59FE" autosavesConfiguration="NO" displayMode="iconAndLabel" sizeMode="regular" id="hoP-hc-kjO">
-                <allowedToolbarItems>
-                    <toolbarItem implicitItemIdentifier="NSToolbarSpaceItem" id="e0s-ax-GFW"/>
-                    <toolbarItem implicitItemIdentifier="BBF88B26-3D55-4A44-8B32-FCDA1244F834" label="Advanced" paletteLabel="Advanced" tag="2" image="gearshape.2" catalog="system" sizingBehavior="auto" selectable="YES" id="Sd7-ph-OZb">
-                        <connections>
-                            <action selector="selectPane:" target="-2" id="31x-1i-l1J"/>
-                        </connections>
-                    </toolbarItem>
-                    <toolbarItem implicitItemIdentifier="9DE293EF-469E-4CF5-A0DC-48EF9383E77E" label="General" paletteLabel="General" image="gearshape" catalog="system" sizingBehavior="auto" selectable="YES" id="anK-jv-iEB">
-                        <nil key="toolTip"/>
-                        <connections>
-                            <action selector="selectPane:" target="-2" id="qkQ-y4-wdY"/>
-                        </connections>
-                    </toolbarItem>
-                    <toolbarItem implicitItemIdentifier="NSToolbarFlexibleSpaceItem" id="v5U-07-fgt"/>
-                    <toolbarItem implicitItemIdentifier="0158C887-6CE4-4F1D-855E-03A984EEA45C" label="Appearance" paletteLabel="Appearance" tag="1" image="macwindow.on.rectangle" catalog="system" sizingBehavior="auto" selectable="YES" id="X9F-cn-Knh">
-                        <connections>
-                            <action selector="selectPane:" target="-2" id="k8c-4v-YNV"/>
-                        </connections>
-                    </toolbarItem>
-                </allowedToolbarItems>
-                <defaultToolbarItems>
-                    <toolbarItem reference="anK-jv-iEB"/>
-                    <toolbarItem reference="X9F-cn-Knh"/>
-                    <toolbarItem reference="Sd7-ph-OZb"/>
-                    <toolbarItem reference="v5U-07-fgt"/>
-                </defaultToolbarItems>
-            </toolbar>
             <point key="canvasLocation" x="132" y="188"/>
         </window>
         <userDefaultsController representsSharedInstance="YES" id="QcB-lQ-hRp"/>
@@ -186,7 +154,7 @@
                     </textFieldCell>
                 </textField>
                 <button fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="r1w-Tf-Z6v">
-                    <rect key="frame" x="128" y="44" width="242" height="18"/>
+                    <rect key="frame" x="128" y="44" width="272" height="18"/>
                     <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                     <buttonCell key="cell" type="check" title="Take exclusive access (Hog Mode)" bezelStyle="regularSquare" imagePosition="left" state="on" inset="2" id="vHg-FS-sKF">
                         <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
@@ -387,7 +355,6 @@
                         </menu>
                     </popUpButtonCell>
                     <connections>
-                        <action selector="handleScriptHandlerPopUp:" target="-2" id="UWH-sg-7wB"/>
                         <binding destination="-2" name="selectedTag" keyPath="self.preferences.themeType" id="nUW-Uw-8HV"/>
                     </connections>
                 </popUpButton>
@@ -395,9 +362,4 @@
             <point key="canvasLocation" x="124" y="503"/>
         </view>
     </objects>
-    <resources>
-        <image name="gearshape" catalog="system" width="16" height="16"/>
-        <image name="gearshape.2" catalog="system" width="20" height="16"/>
-        <image name="macwindow.on.rectangle" catalog="system" width="19" height="15"/>
-    </resources>
 </document>

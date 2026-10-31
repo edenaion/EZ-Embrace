@@ -4,14 +4,18 @@
 #import "TrackTableCellView.h"
 
 #import "Track.h"
+#import "TrackGenre.h"
 #import "TrackErrorButton.h"
 #import "AppDelegate.h"
 #import "NoDropImageView.h"
 #import "Preferences.h"
 #import "TrackLabelView.h"
 #import "TrackTableView.h"
+#import "TrackTableRowView.h"
 #import "TrackStripeView.h"
 #import "MaskView.h"
+#import "InterfaceAppearance.h"
+#import "TrackCueController.h"
 
 
 @interface TrackTableCellView () <ApplicationEventListener>
@@ -73,6 +77,8 @@
     BOOL            _timeRequested;
     BOOL            _animatesTime;
     BOOL            _animatesSpeakerImage;
+    TrackCueButton *_cueButton;
+    NSPopover *_cuePopover;
 }
 
 
@@ -104,6 +110,7 @@
 
 - (void) dealloc
 {
+    [_cuePopover close];
     [self _removeObservers];
 
     [_errorButton setTarget:nil];
@@ -114,7 +121,9 @@
 - (void) viewDidMoveToSuperview
 {
     [super viewDidMoveToSuperview];
+    if (!self.superview) [_cuePopover close];
     _mouseInside = NO;
+    [self updateColors];
 }
 
 
@@ -155,6 +164,26 @@
 
 - (void) awakeFromNib
 {
+    NSView *container = _durationField.superview;
+    _cueButton = [[TrackCueButton alloc] initWithFrame:NSZeroRect];
+    _cueButton.translatesAutoresizingMaskIntoConstraints = NO;
+    _cueButton.bordered = NO;
+    _cueButton.title = @"";
+    _cueButton.target = self;
+    _cueButton.action = @selector(_cueButtonClicked:);
+    [container addSubview:_cueButton];
+    for (NSLayoutConstraint *constraint in container.constraints) {
+        if (constraint.firstItem == container && constraint.firstAttribute == NSLayoutAttributeRight &&
+            constraint.secondItem == _durationField && constraint.secondAttribute == NSLayoutAttributeRight) {
+            constraint.constant += 28;
+        }
+    }
+    [NSLayoutConstraint activateConstraints:@[
+        [_cueButton.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-5],
+        [_cueButton.centerYAnchor constraintEqualToAnchor:_durationField.centerYAnchor],
+        [_cueButton.widthAnchor constraintEqualToConstant:22],
+        [_cueButton.heightAnchor constraintEqualToConstant:18]
+    ]];
     [_errorButton setAutoresizingMask:NSViewMinXMargin];
     [_errorButton setTarget:self];
     [_errorButton setAction:@selector(_errorButtonClicked:)];
@@ -311,6 +340,7 @@
 
 - (void) setObjectValue:(id)objectValue
 {
+    if (objectValue != self.objectValue) { [_cuePopover close]; _cuePopover = nil; }
     [self _removeObservers];
 
     [super setObjectValue:objectValue];
@@ -319,6 +349,8 @@
         @"title",
         @"artist",
         @"playDuration",
+        @"queuedPlayDuration",
+        @"cueStartTime",
         @"error",
         @"estimatedEndTime",
         @"pausesAfterPlaying",
@@ -327,6 +359,7 @@
         @"tonality",
         @"comments",
         @"grouping",
+        @"genre",
         @"beatsPerMinute",
         @"trackStatus",
         @"trackLabel",
@@ -384,6 +417,25 @@
     [GetAppDelegate() displayErrorForTrack:[self track]];
 }
 
+- (void) _cueButtonClicked:(id)sender
+{
+    if (!self.track) return;
+    if (_cuePopover.shown) { [_cuePopover close]; return; }
+    _cuePopover = [TrackCueController showForTrack:self.track relativeToView:_cueButton];
+}
+
+- (void) _updateCueButton
+{
+    Track *track = self.track;
+    NSTimeInterval cue = track.cueStartTime;
+    _cueButton.hidden = !track;
+    _cueButton.cueActive = cue > 0;
+    NSString *state = cue > 0 ? [NSString stringWithFormat:NSLocalizedString(@"Starts at %@ once. Clears after playback.", nil), GetStringForTime(cue)] : NSLocalizedString(@"Off. Starts at 0:00.", nil);
+    NSString *label = [NSString stringWithFormat:NSLocalizedString(@"Start marker for %@. %@", nil), track.title ?: @"", state];
+    _cueButton.accessibilityLabel = label;
+    _cueButton.toolTip = label;
+}
+
 
 - (void) _unrequestTime
 {
@@ -418,12 +470,11 @@
 - (CGFloat) _statusShapeLength
 {
     NSInteger numberOfLayoutLines = [[Preferences sharedInstance] numberOfLayoutLines];
-    BOOL      usesLargerText      = [[Preferences sharedInstance] usesLargerText];
     
     if (numberOfLayoutLines == 1) {
-        return usesLargerText ? 24 : 20;
+        return 20;
     } else {
-        return usesLargerText ? 28 : 25;
+        return 25;
     }
 }
 
@@ -438,6 +489,7 @@
     
     [self _updateLabelEdgeAndStripe];
     [self updateColors];
+    [self _updateCueButton];
 
     if ([self track]) {
         [self _updateStatusShape];
@@ -465,11 +517,14 @@
 - (void) _updateSpeakerIconAnimated:(BOOL)animated
 {
     TrackStatus trackStatus = [[self track] trackStatus];
+
     BOOL        isPlaying   = (trackStatus == TrackStatusPlaying);
     
     if (![[Preferences sharedInstance] showsPlayingStatus]) {
         isPlaying = NO;
     }
+    [_speakerImageView setHidden:!isPlaying];
+    [_speakerImageView setAccessibilityElement:isPlaying];
     
     CGFloat constant = isPlaying ? 8.0 : -13.0;
     CGFloat alpha    = isPlaying ? 1.0 :  0.0;
@@ -634,9 +689,24 @@
 
     TrackStatus trackStatus = [[self track] trackStatus];
 
+    if ([rowView isKindOfClass:[TrackTableRowView class]]) {
+        TrackTableRowView *trackRow = (TrackTableRowView *)rowView;
+        [trackRow setPlaying:trackStatus == TrackStatusPlaying && [[Preferences sharedInstance] showsPlayingStatus]];
+        trackRow.highlightsUpcomingOtherGenre = trackStatus == TrackStatusQueued &&
+            TrackGenreUsesUpcomingHighlight(self.track.genre);
+    }
+    BOOL drawsOtherGenreHighlight = [rowView isKindOfClass:TrackTableRowView.class] &&
+        [(TrackTableRowView *)rowView drawsUpcomingOtherGenreHighlight];
+    NSString *status = trackStatus == TrackStatusPlayed ? NSLocalizedString(@"Played", nil) :
+        trackStatus == TrackStatusPlaying ? NSLocalizedString(@"Now playing", nil) :
+        trackStatus == TrackStatusPreparing ? NSLocalizedString(@"Preparing playback", nil) : NSLocalizedString(@"Up Next", nil);
+    [self setToolTip:status];
+    [_speakerImageView setAccessibilityLabel:NSLocalizedString(@"Now playing", nil)];
+    [_speakerImageView setAccessibilityRole:NSAccessibilityImageRole];
+
     if (trackStatus == TrackStatusPlayed) {
-        primaryColor   = [NSColor colorNamed:@"SetlistPrimaryPlayed"];
-        secondaryColor = [NSColor colorNamed:@"SetlistSecondaryPlayed"];
+        primaryColor   = [NSColor colorNamed:@"SetlistPrimaryPlayed"] ?: [NSColor colorWithWhite:0 alpha:0.50];
+        secondaryColor = [NSColor colorNamed:@"SetlistSecondaryPlayed"] ?: [NSColor colorWithWhite:0 alpha:0.40];
     
     } else {
         primaryColor   = [NSColor colorNamed:@"SetlistPrimary"];
@@ -650,16 +720,25 @@
     } else if ((trackStatus == TrackStatusPreparing) || (trackStatus == TrackStatusPlaying)) {
         primaryColor   = TrackTableViewGetPlayingTextColor();
         secondaryColor = primaryColor;
+
+    } else if (drawsOtherGenreHighlight) {
+        NSColor *rgb = [[[Preferences sharedInstance] upcomingOtherGenreColor]
+            colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+        CGFloat luminance = rgb ? 0.2126 * rgb.redComponent + 0.7152 * rgb.greenComponent +
+            0.0722 * rgb.blueComponent : 1;
+        primaryColor = luminance > 0.52 ? NSColor.blackColor : NSColor.whiteColor;
+        secondaryColor = primaryColor;
     }
    
-    [[self titleField]    setTextColor:primaryColor];
-    [[self durationField] setTextColor:primaryColor];
-
-    [[self lineTwoLeftField]    setTextColor:secondaryColor];
-    [[self lineTwoRightField]   setTextColor:secondaryColor];
-    [[self lineThreeLeftField]  setTextColor:secondaryColor];
-    [[self lineThreeRightField] setTextColor:secondaryColor];
-    [_timeField                 setTextColor:secondaryColor];
+    BOOL appliesContrast = !drawsOtherGenreHighlight &&
+        (trackStatus != TrackStatusPlayed || (rowIsSelected && rowIsEmphasized));
+    [InterfaceAppearance setTextColor:primaryColor forField:[self titleField] appliesContrast:appliesContrast];
+    [InterfaceAppearance setTextColor:primaryColor forField:[self durationField] appliesContrast:appliesContrast];
+    [InterfaceAppearance setTextColor:secondaryColor forField:[self lineTwoLeftField] appliesContrast:appliesContrast];
+    [InterfaceAppearance setTextColor:secondaryColor forField:[self lineTwoRightField] appliesContrast:appliesContrast];
+    [InterfaceAppearance setTextColor:secondaryColor forField:[self lineThreeLeftField] appliesContrast:appliesContrast];
+    [InterfaceAppearance setTextColor:secondaryColor forField:[self lineThreeRightField] appliesContrast:appliesContrast];
+    [InterfaceAppearance setTextColor:secondaryColor forField:_timeField appliesContrast:appliesContrast];
 
     [_duplicateImageView setTintColor:primaryColor];
     [_speakerImageView   setTintColor:primaryColor];
@@ -685,6 +764,8 @@
 
     if (rowIsSelected) {
         color = TrackTableViewGetRowHighlightColor(rowIsEmphasized);
+    } else if (drawsOtherGenreHighlight) {
+        color = [[Preferences sharedInstance] upcomingOtherGenreColor];
     } else {
         if (@available(macOS 10.14, *)) {
             material = NSVisualEffectMaterialContentBackground;
@@ -902,7 +983,7 @@
     if (!titleString) titleString = @"";
     [[self titleField] setStringValue:titleString];
     
-    NSString *durationString = GetStringForTime(round([track playDuration]));
+    NSString *durationString = GetStringForTime(round([track queuedPlayDuration]));
     if (!durationString) durationString = @"";
     [[self durationField] setStringValue:durationString];
 }
@@ -964,29 +1045,27 @@
 
 - (void) _updateFieldFonts
 {
-    BOOL usesLargerText = [[Preferences sharedInstance] usesLargerText];
-    
-    CGFloat primaryFontSize   = usesLargerText ? 16.0 : 13.0;
-    CGFloat secondaryFontSize = usesLargerText ? 14.0 : 11.0;
+    CGFloat primaryFontSize   = 13.0;
+    CGFloat secondaryFontSize = 11.0;
 
     NSFont *titleFont     = [NSFont systemFontOfSize:primaryFontSize                  weight:NSFontWeightRegular];
     NSFont *secondaryFont = [NSFont systemFontOfSize:secondaryFontSize                weight:NSFontWeightRegular];
     NSFont *durationFont  = [NSFont monospacedDigitSystemFontOfSize:primaryFontSize   weight:NSFontWeightRegular];
     NSFont *timeFont      = [NSFont monospacedDigitSystemFontOfSize:secondaryFontSize weight:NSFontWeightRegular];
 
-    [[self titleField]    setFont:titleFont];
-    [[self durationField] setFont:durationFont];
+    [InterfaceAppearance setFont:titleFont forControl:[self titleField]];
+    [InterfaceAppearance setFont:durationFont forControl:[self durationField]];
 
-    [[self lineTwoLeftField]    setFont:secondaryFont];
-    [[self lineTwoRightField]   setFont:secondaryFont];
-    [[self lineThreeLeftField]  setFont:secondaryFont];
-    [[self lineThreeRightField] setFont:secondaryFont];
+    [InterfaceAppearance setFont:secondaryFont forControl:[self lineTwoLeftField]];
+    [InterfaceAppearance setFont:secondaryFont forControl:[self lineTwoRightField]];
+    [InterfaceAppearance setFont:secondaryFont forControl:[self lineThreeLeftField]];
+    [InterfaceAppearance setFont:secondaryFont forControl:[self lineThreeRightField]];
     
-    [[self firstLineTopConstraint]  setConstant:(usesLargerText ? 6 : 2)];
+    [[self firstLineTopConstraint]  setConstant:2];
     [[self secondLineTopConstraint] setConstant:2];
     [[self thirdLineTopConstraint]  setConstant:2];
         
-    [_timeField setFont:timeFont];
+    [InterfaceAppearance setFont:timeFont forControl:_timeField];
 }
 
 

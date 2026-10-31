@@ -15,6 +15,8 @@
 #import "HugUtils.h"
 #import "HugAudioSettings.h"
 #import "HugAudioSource.h"
+#import "HugAudioLookahead.h"
+#import "RestorationAudioUnit.h"
 
 #import <AVFoundation/AVFoundation.h>
 
@@ -83,6 +85,8 @@ typedef struct {
     volatile float preGain;
 
     volatile UInt64 renderStart;
+
+    HugAudioLookaheadClock lookaheadClock;
 } RenderUserInfo;
 
 
@@ -101,6 +105,7 @@ static OSStatus sOutputUnitRenderCallback(
     __unsafe_unretained AURenderPullInputBlock renderBlock     = atomic_load(&userInfo->renderBlock);
     __unsafe_unretained AURenderPullInputBlock nextRenderBlock = atomic_load(&userInfo->nextRenderBlock);
 
+    userInfo->renderStart = HugGetCurrentHostTime();
     OSStatus err = renderBlock(ioActionFlags, inTimeStamp, inNumberFrames, 0, ioData);
 
     if (renderBlock != nextRenderBlock) {
@@ -124,6 +129,7 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
     RenderUserInfo _renderUserInfo;
 
     HugAudioSource *_currentSource;
+    UInt32 _seekGeneration;
     HugAudioSourceInputBlock _currentInputBlock;
     AudioUnit _outputAudioUnit;
 
@@ -188,6 +194,8 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
         
         _statusRingBuffer = HugRingBufferCreate(8196);
         _errorRingBuffer  = HugRingBufferCreate(8196);
+
+        HugAudioLookaheadClockInitialize(&_renderUserInfo.lookaheadClock);
     }
 
     return self;
@@ -295,6 +303,8 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
             PacketDataPlayback packet;
             if (!HugRingBufferRead(_statusRingBuffer, &packet, sizeof(PacketDataPlayback))) return;
 
+            if (packet.info.seekGeneration != _seekGeneration) continue;
+
             _playbackStatus = packet.info.status;
             _timeElapsed    = packet.info.timeElapsed;
             _timeRemaining  = packet.info.timeRemaining;
@@ -385,6 +395,22 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
 
     RenderUserInfo *userInfo = &_renderUserInfo;
 
+    double sampleRate = [[_outputSettings objectForKey:HugAudioSettingSampleRate] doubleValue];
+    UInt32 frameSize  = [[_outputSettings objectForKey:HugAudioSettingFrameSize] unsignedIntValue];
+
+    NSMutableArray *resettable = [NSMutableArray array];
+    for (AUAudioUnit *unit in _effectAudioUnits) {
+        if ([unit conformsToProtocol:@protocol(EmbraceStreamResetting)]) {
+            [resettable addObject:unit];
+        }
+    }
+    NSArray *streamResetUnits = [resettable copy];
+    void (^requestStreamReset)(void) = ^{
+        for (id<EmbraceStreamResetting> unit in streamResetUnits) {
+            [unit embrace_requestStreamReset];
+        }
+    };
+
     HugSimpleGraph *graph = [[HugSimpleGraph alloc] initWithErrorBlock:^(OSStatus err, NSInteger index) {
         PacketDataRenderError packet = { 0, PacketTypeRenderError, index, err };
         HugRingBufferWrite(errorRingBuffer, &packet, sizeof(packet));
@@ -405,8 +431,6 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
         NSInteger inputBusNumber,
         AudioBufferList *ioData
     ) {
-        userInfo->renderStart = HugGetCurrentHostTime();
-
         __unsafe_unretained HugAudioSourceInputBlock inputBlock     = atomic_load(&userInfo->inputBlock);
         __unsafe_unretained HugAudioSourceInputBlock nextInputBlock = atomic_load(&userInfo->nextInputBlock);
         
@@ -425,6 +449,11 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
 
         } else {
             err = inputBlock(inNumberFrames, ioData, &info);
+
+            if (HugAudioLookaheadClockDidPull(
+                    &userInfo->lookaheadClock, inNumberFrames, info.seekGeneration)) {
+                requestStreamReset();
+            }
             
             HugStereoFieldProcess(stereoField, leftData, rightData, inNumberFrames, userInfo->stereoBalance, userInfo->stereoWidth);
             HugLinearRamperProcess(preGainRamper, leftData, rightData, inNumberFrames, userInfo->preGain);
@@ -440,11 +469,20 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
             HugLinearRamperReset(volumeRamper,  userInfo->volume);
             HugStereoFieldReset(stereoField, userInfo->stereoBalance, userInfo->stereoWidth);
 
+            requestStreamReset();
+            HugAudioLookaheadClockRequestReset(&userInfo->lookaheadClock);
+
             atomic_store(&userInfo->inputBlock, nextInputBlock);
 
         } else {
             if (inputBlock && (timestamp->mFlags & kAudioTimeStampHostTimeValid)) {
-                PacketDataPlayback packet = { timestamp->mHostTime, PacketTypePlayback, info };
+                PacketDataPlayback packet = {
+                    timestamp->mHostTime + HugGetHostTimeWithSeconds(
+                        sampleRate > 0 ? HugAudioLookaheadClockAheadFrames(
+                            &userInfo->lookaheadClock) / sampleRate : 0),
+                    PacketTypePlayback,
+                    info
+                };
                 sendStatusPacket(packet);
             }
         }
@@ -452,9 +490,6 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
         return err;
     }];
 
-    double sampleRate = [[_outputSettings objectForKey:HugAudioSettingSampleRate] doubleValue];
-    UInt32 frameSize  = [[_outputSettings objectForKey:HugAudioSettingFrameSize] unsignedIntValue];
-    
     if (sampleRate && frameSize) {
         AVAudioFormat *format = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:sampleRate channels:2];
         
@@ -546,9 +581,13 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
             PacketDataDanger packet = { currentTime, PacketTypeDanger, inNumberFrames, renderTime };
             sendStatusPacket(packet);
         }
+
+        HugAudioLookaheadClockDidOutput(&userInfo->lookaheadClock, inNumberFrames);
         
         return noErr;
     }];
+
+    HugAudioLookaheadClockRequestReset(&_renderUserInfo.lookaheadClock);
 
     AURenderPullInputBlock blockToSend = [graph renderBlock];
     
@@ -715,6 +754,15 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
               stopTime: (NSTimeInterval) stopTime
                padding: (NSTimeInterval) padding
 {
+    return [self playAudioFile:file startTime:startTime stopTime:stopTime padding:padding initialTime:0];
+}
+
+- (BOOL) playAudioFile:(HugAudioFile *)file
+            startTime:(NSTimeInterval)startTime
+             stopTime:(NSTimeInterval)stopTime
+              padding:(NSTimeInterval)padding
+          initialTime:(NSTimeInterval)initialTime
+{
     HugLogMethod();
 
     // Stop first, this should clear the playing HugAudioSource and
@@ -727,7 +775,7 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
     HugAudioSource *source = [[HugAudioSource alloc] initWithAudioFile:file settings:_outputSettings];
     
     HugAuto weakSelf = self;
-    BOOL didPrepare = [source prepareWithStartTime:startTime stopTime:stopTime padding:padding completionHandler:^(HugAudioSource *inSource) {
+    BOOL didPrepare = [source prepareWithStartTime:startTime stopTime:stopTime padding:padding initialTime:initialTime completionHandler:^(HugAudioSource *inSource) {
         [weakSelf _handleDidPrepareSource:inSource];
     }];
 
@@ -776,6 +824,7 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
     HugLevelMeterReset(_rightLevelMeter);
     
     _playbackStatus = HugPlaybackStatusStopped;
+    _seekGeneration = 0;
     _timeElapsed    = 0;
     _timeRemaining  = 0;
     _leftMeterData  = nil;
@@ -788,6 +837,20 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
 {
     [self stopPlayback];
     [self _reallyStopHardware];
+}
+
+
+- (BOOL) seekToTime:(NSTimeInterval)time
+{
+    UInt32 generation = [_currentSource seekToTime:time];
+    if (!generation) return NO;
+
+    _seekGeneration = generation;
+    NSTimeInterval duration = [_currentSource duration];
+    _timeElapsed = MIN(MAX(0, time), duration);
+    _timeRemaining = MAX(0, duration - _timeElapsed);
+    _playbackStatus = HugPlaybackStatusPlaying;
+    return YES;
 }
 
 
@@ -817,25 +880,21 @@ static OSStatus sHandleAudioDeviceOverload(AudioObjectID inObjectID, UInt32 inNu
 
 - (void) updateEffectAudioUnits:(NSArray<AUAudioUnit *> *)effectAudioUnits
 {
+    // Reset correction adapted from EmbraceNG 80a7b8b5cdaa104011f0840520f15069c2eba7ba.
+    // Copyright (c) 2026 Nick Shaforostov; MIT License, see LICENSE.EmbraceNG.
     if (_effectAudioUnits != effectAudioUnits || ![_effectAudioUnits isEqual:effectAudioUnits]) {
-        NSMutableArray *effectsToAdd    = [NSMutableArray array];
         NSMutableArray *effectsToRemove = [NSMutableArray array];
 
         for (AUAudioUnit *effect in _effectAudioUnits) {
             if (![effectAudioUnits containsObject:effect]) {
-                [effectsToAdd addObject:effect];
-            }
-        }
-
-        for (AUAudioUnit *effect in effectAudioUnits) {
-            if (![_effectAudioUnits containsObject:effect]) {
                 [effectsToRemove addObject:effect];
             }
         }
     
         _effectAudioUnits = effectAudioUnits;
         [self _reconnectGraph];
-        
+
+        // Active units can now be rendering. Reset only units that left the graph.
         for (AUAudioUnit *unit in effectsToRemove) {
             [unit reset];
         }

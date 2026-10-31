@@ -10,6 +10,7 @@
 #import "TrackTableView.h"
 #import "TrackTableRowView.h"
 #import "MusicAppManager.h"
+#import "MusicLibrary.h"
 #import "ExportManager.h"
 
 
@@ -24,6 +25,9 @@ static NSString * const sModifiedAtKey = @"modified-at";
 @interface TracksController () <NSMenuItemValidation>
 @property (nonatomic) NSUInteger count;
 @property (nonatomic, weak) IBOutlet TrackTableView *tableView;
+- (NSUInteger)_firstPlayedIndex;
+- (NSUInteger)_firstQueuedIndex;
+- (void)_updateVisibleSectionDividers;
 @end
 
 
@@ -33,6 +37,7 @@ static NSString * const sModifiedAtKey = @"modified-at";
 
     NSIndexSet *_draggedIndexSet;
     BOOL _draggedIndexSetIsContiguous;
+    BOOL _draggedTracksArePlayed;
 
     BOOL       _dragCacheIsExternal;
     NSArray   *_dragCacheMetadataArray;
@@ -201,6 +206,7 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
     EmbraceLog(@"TracksController", @"Found %ld tracks", (long)resultsCount);
 
     if (resultsCount > 0) {
+        index = MIN(index, [self _firstPlayedIndex]);
         BOOL okToAdd = YES;
         
         if (resultsCount > 100) {
@@ -268,7 +274,7 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
 - (void) _loadState
 {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSMutableArray *tracks = [NSMutableArray array];
+    NSMutableArray *loadedTracks = [NSMutableArray array];
 
     NSArray *trackUUIDs  = [defaults objectForKey:sTrackUUIDsKey];
 
@@ -277,7 +283,7 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
             NSUUID *uuid = [[NSUUID alloc] initWithUUIDString:uuidString];
             Track *track = [Track trackWithUUID:uuid];
 
-            if (track) [tracks addObject:track];
+            if (track) [loadedTracks addObject:track];
             
             TrackStatus trackStatus = [track trackStatus];
             
@@ -287,7 +293,7 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
         }
     }
     
-    _tracks = tracks;
+    _tracks = loadedTracks;
 }
 
 
@@ -300,6 +306,7 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
 - (void) _didModifyTracks
 {
     [self detectDuplicates];
+    [self _updateVisibleSectionDividers];
 
     NSTimeInterval t = [NSDate timeIntervalSinceReferenceDate];
     [[NSUserDefaults standardUserDefaults] setObject:@(t) forKey:sModifiedAtKey];
@@ -329,7 +336,88 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
 }
 
 
+- (NSUInteger) _firstPlayedIndex
+{
+    // Only the trailing run is history. Tracks that just finished stay gray in
+    // their original timeline positions above the history divider.
+    NSUInteger index = [_tracks count];
+    while (index > 0 && [[_tracks objectAtIndex:index - 1] trackStatus] == TrackStatusPlayed) index--;
+    return index;
+}
+
+- (NSUInteger) _lastPlayedIndex
+{
+    NSUInteger result = NSNotFound;
+    NSTimeInterval latestPlayedTime = -DBL_MAX;
+    for (NSUInteger index = 0; index < [_tracks count]; index++) {
+        Track *track = [_tracks objectAtIndex:index];
+        if ([track trackStatus] != TrackStatusPlayed) continue;
+        NSTimeInterval playedTime = [track playedTime];
+        if (result == NSNotFound || playedTime >= latestPlayedTime) {
+            result = index;
+            latestPlayedTime = playedTime;
+        }
+    }
+    return result;
+}
+
+
+- (NSUInteger) _firstQueuedIndex
+{
+    NSUInteger firstPlayedIndex = [self _firstPlayedIndex];
+    for (NSUInteger index = 0; index < firstPlayedIndex; index++) {
+        if ([[_tracks objectAtIndex:index] trackStatus] == TrackStatusQueued) return index;
+    }
+    return firstPlayedIndex;
+}
+
+
+- (void) _updateVisibleSectionDividers
+{
+    NSUInteger lastPlayedIndex = [self _lastPlayedIndex];
+
+    for (NSUInteger row = 0; row < [_tracks count]; row++) {
+        TrackTableRowView *rowView = [[self tableView] rowViewAtRow:row makeIfNecessary:NO];
+        if ([rowView isKindOfClass:[TrackTableRowView class]]) {
+            [rowView setEndsLastPlayedTrack:(row == lastPlayedIndex)];
+        }
+    }
+}
+
+
 #pragma mark - Dragging
+
+static BOOL sNormalizeInternalDropTarget(NSInteger *row,
+                                         NSTableViewDropOperation *dropOperation,
+                                         NSUInteger firstQueuedIndex,
+                                         NSUInteger firstPlayedIndex)
+{
+    if (*dropOperation != NSTableViewDropOn) {
+        return YES;
+    }
+
+    NSInteger targetRow = *row;
+    if (targetRow < 0) {
+        return NO;
+    }
+
+    if (targetRow < (NSInteger)firstQueuedIndex) {
+        *row = (NSInteger)firstQueuedIndex;
+
+    } else if (targetRow < (NSInteger)firstPlayedIndex) {
+        *row = targetRow + 1;
+
+    } else if (targetRow == (NSInteger)firstPlayedIndex) {
+        *row = (NSInteger)firstPlayedIndex;
+
+    } else {
+        return NO;
+    }
+
+    *dropOperation = NSTableViewDropAbove;
+    return YES;
+}
+
 
 - (void) _updateDragCacheWithPasteboard:(NSPasteboard *)pasteboard
 {
@@ -356,6 +444,7 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
         (__bridge NSString *)kUTTypeFileURL,
         (__bridge NSString *)kPasteboardTypeFileURLPromise,
         @"com.apple.music.metadata",
+        MusicLibraryPlaylistPasteboardType,
         @"com.apple.tv.metadata",
         NSPasteboardTypeURL,
         @"NSFilenamesPboardType",
@@ -367,26 +456,30 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
 {
     NSArray *tracksToDrag = [_tracks objectsAtIndexes:rowIndexes];
 
-    BOOL hasQueued    = NO;
-    BOOL hasNotQueued = NO;
+    BOOL hasQueued = NO;
+    BOOL hasPlayed = NO;
+    BOOL hasActive = NO;
 
     for (Track *track in tracksToDrag) {
-        if ([track trackStatus] != TrackStatusQueued) {
-            hasNotQueued = YES;
-        } else {
-            hasQueued = YES;
+        switch ([track trackStatus]) {
+            case TrackStatusQueued: hasQueued = YES; break;
+            case TrackStatusPlayed: hasPlayed = YES; break;
+            default: hasActive = YES; break;
         }
     }
-    
-    // Don't allow queued and non-queued
-    if (hasNotQueued && hasQueued) {
+
+    if (hasActive || (hasPlayed && hasQueued)) {
         return NO;
     }
-    
+
     [pboard setData:[NSData data] forType:(hasQueued ? EmbraceQueuedTrackPasteboardType : EmbraceLockedTrackPasteboardType)];
 
     _draggedIndexSet = rowIndexes;
     _draggedIndexSetIsContiguous = [self _isIndexSetContiguous:_draggedIndexSet];
+    _draggedTracksArePlayed = hasPlayed;
+
+    EmbraceLog(@"TracksController", @"Starting %@ drag at indexes %@",
+               hasPlayed ? @"played-history" : @"Up Next", rowIndexes);
     
     return YES;
 }
@@ -399,6 +492,8 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
     [self _updateDragCacheWithPasteboard:pasteboard];
 
     BOOL isQueuedTrack   =  ([pasteboard dataForType:EmbraceQueuedTrackPasteboardType] != nil);
+    BOOL isLockedTrack   =  ([pasteboard dataForType:EmbraceLockedTrackPasteboardType] != nil);
+    BOOL isPlayedTrack   = isLockedTrack && _draggedTracksArePlayed;
     BOOL isExternalTrack = _dragCacheIsExternal;
 
     NSDragOperation mask = [info draggingSourceOperationMask];
@@ -414,30 +509,46 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
         [info setNumberOfValidItemsForDrop:[_dragCacheFileURLs count]];
     }
     
-    if (dropOperation == NSTableViewDropAbove) {
-        Track *track = [self trackAtIndex:row];
+    NSUInteger firstQueuedIndex = [self _firstQueuedIndex];
+    NSUInteger firstPlayedIndex = [self _firstPlayedIndex];
 
-        if (!track || [track trackStatus] == TrackStatusQueued) {
-            if (isCopy) {
-                return NSDragOperationCopy;
+    if ((isQueuedTrack || isLockedTrack) && dropOperation == NSTableViewDropOn) {
+        NSInteger insertionRow = row;
+        NSTableViewDropOperation insertionOperation = dropOperation;
 
-            } else if (!_draggedIndexSetIsContiguous) {
-                return NSDragOperationGeneric;
+        if (!sNormalizeInternalDropTarget(&insertionRow,
+                                          &insertionOperation,
+                                          firstQueuedIndex,
+                                          firstPlayedIndex)) {
+            return NSDragOperationNone;
+        }
 
-            } else if (isQueuedTrack) {
-                if ((row >= [_draggedIndexSet firstIndex]) && (row <= ([_draggedIndexSet lastIndex] + 1))) {
-                    return NSDragOperationNone;
-                } else {
-                    if (isCopy) {
-                        return NSDragOperationCopy;
-                    } else {
-                        return NSDragOperationGeneric;
-                    }
-                }
+        [_tableView setDropRow:insertionRow dropOperation:insertionOperation];
+        row = insertionRow;
+        dropOperation = insertionOperation;
+    }
 
-            } else {
+    BOOL isUpcomingInsertion = row >= (NSInteger)firstQueuedIndex && row <= (NSInteger)firstPlayedIndex;
+
+    if (dropOperation == NSTableViewDropAbove && isUpcomingInsertion) {
+        if (isExternalTrack || isCopy) {
+            return NSDragOperationCopy;
+        }
+
+        if (isPlayedTrack) {
+            return NSDragOperationGeneric;
+        }
+
+        if (!_draggedIndexSetIsContiguous) {
+            return isQueuedTrack ? NSDragOperationGeneric : NSDragOperationNone;
+        }
+
+        if (isQueuedTrack) {
+            if ((row >= (NSInteger)[_draggedIndexSet firstIndex]) && (row <= (NSInteger)([_draggedIndexSet lastIndex] + 1))) {
                 return NSDragOperationNone;
             }
+
+            return NSDragOperationGeneric;
         }
     }
 
@@ -445,14 +556,14 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
         if (dropOperation == NSTableViewDropOn) {
             Track *track = [self trackAtIndex:row];
 
-            if (!track || [track trackStatus] == TrackStatusQueued) {
-                [_tableView setDropRow:(row + 1) dropOperation:NSTableViewDropAbove];
+            if (track && [track trackStatus] != TrackStatusPlayed && (row + 1) <= (NSInteger)firstPlayedIndex) {
+                NSInteger insertionRow = MAX(row + 1, (NSInteger)firstQueuedIndex);
+                [_tableView setDropRow:insertionRow dropOperation:NSTableViewDropAbove];
                 return NSDragOperationCopy;
             }
         }
-    
-        // Always accept a drag from Music.app, target end of table in this case
-        [_tableView setDropRow:-1 dropOperation:NSTableViewDropOn];
+
+        [_tableView setDropRow:firstPlayedIndex dropOperation:NSTableViewDropAbove];
         return NSDragOperationCopy;
     }
 
@@ -485,16 +596,42 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
 
     [self _updateDragCacheWithPasteboard:pboard];
 
+    BOOL requeuesPlayedTracks = ([pboard dataForType:EmbraceLockedTrackPasteboardType] != nil) && _draggedTracksArePlayed;
+    NSArray *draggedTracks = (!_dragCacheIsExternal && _draggedIndexSet) ? [_tracks objectsAtIndexes:_draggedIndexSet] : nil;
+
     if (_dragCacheMetadataArray) {
         [[MusicAppManager sharedInstance] addPasteboardMetadataArray:_dragCacheMetadataArray];
     }
 
     NSDragOperation dragOperation = [self validateDrop:info proposedRow:row proposedDropOperation:dropOperation];
 
-    if ((row == -1) && (dropOperation == NSTableViewDropOn)) {
-        row = [_tracks count];
+    if (dragOperation == NSDragOperationNone) {
+        return NO;
     }
-    
+
+    if (dropOperation == NSTableViewDropOn) {
+        NSUInteger firstQueuedIndex = [self _firstQueuedIndex];
+        NSUInteger firstPlayedIndex = [self _firstPlayedIndex];
+
+        if (_dragCacheIsExternal) {
+            Track *targetTrack = [self trackAtIndex:row];
+            if (targetTrack && [targetTrack trackStatus] != TrackStatusPlayed &&
+                (row + 1) <= (NSInteger)firstPlayedIndex) {
+                row = MAX(row + 1, (NSInteger)firstQueuedIndex);
+            } else {
+                row = (NSInteger)firstPlayedIndex;
+            }
+
+            dropOperation = NSTableViewDropAbove;
+
+        } else if (!sNormalizeInternalDropTarget(&row,
+                                                  &dropOperation,
+                                                  firstQueuedIndex,
+                                                  firstPlayedIndex)) {
+            return NO;
+        }
+    }
+
     if (_dragCacheIsExternal) {
         EmbraceLog(@"TracksController", @"adding tracks at row %ld: %@", (long)row, _dragCacheFileURLs);
         result = [self _addTracksWithURLs:_dragCacheFileURLs atIndex:row];
@@ -543,6 +680,18 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
                     [_tracks insertObject:track atIndex:toIndex];
                 }
             }];
+
+            if (requeuesPlayedTracks) {
+                NSMutableIndexSet *requeuedRows = [NSMutableIndexSet indexSet];
+
+                for (Track *track in draggedTracks) {
+                    [track setTrackStatus:TrackStatusQueued];
+                    NSUInteger newIndex = [_tracks indexOfObjectIdenticalTo:track];
+                    if (newIndex != NSNotFound) [requeuedRows addIndex:newIndex];
+                }
+
+                [[self tableView] noteHeightOfRowsWithIndexesChanged:requeuedRows];
+            }
         }
 
         [self _didModifyTracks];
@@ -592,6 +741,8 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
         [rowView setIdentifier:@"TrackRow"];
     }
 
+    [rowView setEndsLastPlayedTrack:(row == (NSInteger)[self _lastPlayedIndex])];
+
     return rowView;
 }
 
@@ -608,7 +759,6 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
 
     NSInteger numberOfLines = [preferences numberOfLayoutLines];
     BOOL shortensPlayedTracks = [preferences shortensPlayedTracks];
-    BOOL usesLargerText = [preferences usesLargerText];
     
     BOOL usesOneLine = (numberOfLines == 1);
     
@@ -620,11 +770,11 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
     }
     
     if (usesOneLine) {
-        return usesLargerText ? 32 : 24;
+        return 24;
     } else if (numberOfLines == 2) {
-        return usesLargerText ? 52 : 39;
+        return 39;
     } else {
-        return usesLargerText ? 74 : 56;
+        return 56;
     }
 }
 
@@ -652,9 +802,12 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
 
     _draggedIndexSet = nil;
     _draggedIndexSetIsContiguous = NO;
+    _draggedTracksArePlayed = NO;
 
     _dragCacheFileURLs = nil;
     _dragCacheMetadataArray = nil;
+
+    [(TrackTableView *)tableView finishDragModification];
 }
 
 
@@ -672,6 +825,8 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
 
 - (void) trackTableView:(TrackTableView *)tableView isModifyingViaDrag:(BOOL)isModifyingViaDrag
 {
+    EmbraceLog(@"TracksController", @"Playback transition guard for drag: %@",
+               isModifyingViaDrag ? @"on" : @"off");
     [[Player sharedInstance] setPreventNextTrack:isModifyingViaDrag];
 }
 
@@ -843,17 +998,16 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
         return NO;
     }
 
-    NSInteger firstSelectedRow = [selectedRows firstIndex];
-    NSInteger lastSelectedRow  = [selectedRows lastIndex];
-    NSInteger count            = [_tracks count];
-    
-    Track *previousTrack = firstSelectedRow      > 0       ? [_tracks objectAtIndex:(firstSelectedRow - 1)] : nil;
-    Track *nextTrack     = (lastSelectedRow + 1) < count   ? [_tracks objectAtIndex:(lastSelectedRow  + 1)] : nil;
-    
-    BOOL isPreviousPlayed = !previousTrack || ([previousTrack trackStatus] == TrackStatusPlayed);
-    BOOL isNextPlayed     =                    [nextTrack     trackStatus] == TrackStatusPlayed;
+    BOOL hasQueued = NO;
+    BOOL hasPlayed = NO;
 
-    return (isPreviousPlayed != isNextPlayed);
+    for (Track *track in [self selectedTracks]) {
+        if ([track trackStatus] == TrackStatusQueued) hasQueued = YES;
+        else if ([track trackStatus] == TrackStatusPlayed) hasPlayed = YES;
+        else return NO;
+    }
+
+    return [selectedRows count] > 0 && (hasQueued != hasPlayed);
 }
 
 
@@ -1010,17 +1164,21 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
         newTrackStatus = TrackStatusQueued;
     }
 
-    for (Track *track in [self selectedTracks]) {
+    NSArray *selectedTracks = [[self selectedTracks] copy];
+
+    for (Track *track in selectedTracks) {
         [track setTrackStatus:newTrackStatus];
     }
-    
-    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-        [context setDuration:0];
 
-        [[self tableView] beginUpdates];
-        [[self tableView] noteHeightOfRowsWithIndexesChanged:[[self tableView] selectedRowIndexes]];
-        [[self tableView] endUpdates];
-    } completionHandler:nil];
+    [_tracks removeObjectsInArray:selectedTracks];
+    NSUInteger insertionIndex = [self _firstPlayedIndex];
+    NSIndexSet *newIndexes = [NSIndexSet indexSetWithIndexesInRange:NSMakeRange(insertionIndex, [selectedTracks count])];
+    [_tracks insertObjects:selectedTracks atIndexes:newIndexes];
+
+    [[self tableView] reloadData];
+    [[self tableView] selectRowIndexes:newIndexes byExtendingSelection:NO];
+
+    [self _didModifyTracks];
 }
 
 
@@ -1032,6 +1190,7 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
         [[self tableView] beginUpdates];
         [[self tableView] noteHeightOfRowsWithIndexesChanged:[NSIndexSet indexSetWithIndex:row]];
         [[self tableView] endUpdates];
+        [self _updateVisibleSectionDividers];
     }
 }
 
@@ -1109,7 +1268,7 @@ static void sCollectM3UPlaylistURL(NSURL *inURL, NSMutableArray *results, NSInte
 
 - (BOOL) addTracksWithURLs:(NSArray<NSURL *> *)fileURLs
 {
-    NSUInteger index = [_tracks count];
+    NSUInteger index = [self _firstPlayedIndex];
     return [self _addTracksWithURLs:fileURLs atIndex:index];
 }
 

@@ -33,6 +33,7 @@
                 <outlet property="tableMenuLabelView" destination="lH7-Ja-gL2" id="Fkb-xf-0dN"/>
                 <outlet property="topInnerShadowView" destination="kJF-gq-qpW" id="y8c-AL-nlt"/>
                 <outlet property="tracksController" destination="PiM-Bj-V6d" id="vGc-HC-w7B"/>
+                <outlet property="volumeIcon" destination="d7V-0l-UME" id="W8h-ic-QDv"/>
                 <outlet property="volumeSlider" destination="jKO-V6-m9N" id="9Kx-9i-Iy4"/>
                 <outlet property="window" destination="gir-FZ-88a" id="eb8-8W-6sk"/>
             </connections>
@@ -118,11 +119,11 @@
                 <autoresizingMask key="autoresizingMask"/>
                 <subviews>
                     <customView fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="9x2-yQ-Jbg" customClass="SetlistMeterView">
-                        <rect key="frame" x="55" y="384" width="209" height="12"/>
+                        <rect key="frame" x="55" y="365" width="209" height="18"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" flexibleMinY="YES"/>
                     </customView>
                     <customView fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="pkk-ZT-czS" customClass="SetlistPlayBar">
-                        <rect key="frame" x="0.0" y="347" width="320" height="10"/>
+                        <rect key="frame" x="0.0" y="333" width="320" height="24"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" flexibleMinY="YES"/>
                     </customView>
                     <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" alphaValue="0.5" translatesAutoresizingMaskIntoConstraints="NO" id="rvF-zp-fPR">
@@ -172,14 +173,14 @@
                         </connections>
                     </customView>
                     <scrollView fixedFrame="YES" borderType="none" autohidesScrollers="YES" horizontalLineScroll="17" horizontalPageScroll="10" verticalLineScroll="17" verticalPageScroll="10" usesPredominantAxisScrolling="NO" translatesAutoresizingMaskIntoConstraints="NO" id="9qw-rj-zd3">
-                        <rect key="frame" x="0.0" y="29" width="320" height="318"/>
+                        <rect key="frame" x="0.0" y="29" width="320" height="284"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <clipView key="contentView" drawsBackground="NO" id="2Bw-N9-fI8">
-                            <rect key="frame" x="0.0" y="0.0" width="320" height="318"/>
+                            <rect key="frame" x="0.0" y="0.0" width="320" height="284"/>
                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                             <subviews>
                                 <tableView verticalHuggingPriority="750" allowsExpansionToolTips="YES" columnAutoresizingStyle="lastColumnOnly" tableStyle="plain" autosaveColumns="NO" rowSizeStyle="automatic" viewBased="YES" id="QHa-mz-rIH" customClass="TrackTableView">
-                                    <rect key="frame" x="0.0" y="0.0" width="320" height="318"/>
+                                    <rect key="frame" x="0.0" y="0.0" width="320" height="284"/>
                                     <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                     <color key="backgroundColor" name="controlBackgroundColor" catalog="System" colorSpace="catalog"/>
                                     <color key="gridColor" name="gridColor" catalog="System" colorSpace="catalog"/>
@@ -251,7 +252,7 @@
                         </subviews>
                     </visualEffectView>
                     <slider verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="jKO-V6-m9N" customClass="SetlistSlider">
-                        <rect key="frame" x="54" y="360" width="212" height="28"/>
+                        <rect key="frame" x="77" y="384" width="189" height="28"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" flexibleMinY="YES"/>
                         <sliderCell key="cell" controlSize="small" continuous="YES" state="on" alignment="left" maxValue="1" doubleValue="1" tickMarkPosition="above" sliderType="linear" id="S9Z-Nt-8mP" customClass="SetlistSliderCell"/>
                         <connections>
@@ -259,12 +260,17 @@
                             <binding destination="-2" name="value" keyPath="self.player.volume" id="4Eb-wr-emS"/>
                         </connections>
                     </slider>
+                    <imageView wantsLayer="YES" horizontalHuggingPriority="251" verticalHuggingPriority="251" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="d7V-0l-UME" customClass="NoDropImageView">
+                        <rect key="frame" x="55" y="392" width="17" height="12"/>
+                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
+                        <imageCell key="cell" refusesFirstResponder="YES" alignment="left" imageScaling="proportionallyDown" image="SpeakerTemplate" id="L9u-Kb-LVD"/>
+                    </imageView>
                     <customView fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="skD-R4-Vab" customClass="InnerShadowView">
                         <rect key="frame" x="0.0" y="29" width="320" height="2"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" flexibleMaxY="YES"/>
                     </customView>
                     <customView fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="kJF-gq-qpW" customClass="InnerShadowView">
-                        <rect key="frame" x="0.0" y="345" width="320" height="2"/>
+                        <rect key="frame" x="0.0" y="311" width="320" height="2"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" flexibleMinY="YES"/>
                     </customView>
                 </subviews>
@@ -356,5 +362,6 @@
     </objects>
     <resources>
         <image name="PaddingTemplate" width="19" height="13"/>
+        <image name="SpeakerTemplate" width="17" height="12"/>
     </resources>
 </document>

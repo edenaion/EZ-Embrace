@@ -3,7 +3,10 @@
 
 #import "Player.h"
 #import "Track.h"
+#import "TrackGenre.h"
 #import "Effect.h"
+#import "EffectAdditions.h"
+#import "ParametricEQAudioUnit.h"
 #import "AppDelegate.h"
 #import "EffectType.h"
 #import "Preferences.h"
@@ -12,6 +15,7 @@
 #import "HugAudioSettings.h"
 #import "HugAudioSource.h"
 #import "HugAudioFile.h"
+#import "RestorationAudioUnit.h"
 
 #import <pthread.h>
 #import <signal.h>
@@ -24,6 +28,8 @@ static NSString * const sMatchLoudnessKey = @"match-loudness";
 static NSString * const sVolumeKey        = @"volume";
 static NSString * const sStereoLevelKey   = @"stereo-level";
 static NSString * const sStereoBalanceKey = @"stereo-balance";
+NSString * const PlayerEffectsDidChangeNotification = @"PlayerEffectsDidChange";
+NSString * const PlayerWillConfigureOutputNotification = @"PlayerWillConfigureOutput";
 
 static double sMaxVolume = 1.0 - (2.0 / 32767.0);
 
@@ -34,12 +40,15 @@ static double sMaxVolume = 1.0 - (2.0 / 32767.0);
 @property (nonatomic) NSString *timeRemainingString;
 @property (nonatomic) float percentage;
 @property (nonatomic) PlayerIssue issue;
+- (void) _updateAutomaticFlatEQForTrack:(Track *)track;
 @end
 
 
 @implementation Player {
     Track         *_currentTrack;
     NSTimeInterval _currentPadding;
+    NSTimeInterval _currentInitialTime;
+    NSUInteger     _playingCueRevision;
 
     HugAudioEngine *_engine;
     
@@ -201,12 +210,13 @@ static double sMaxVolume = 1.0 - (2.0 / 32767.0);
 
         _timeElapsed   = [_currentTrack playDuration];
         _timeRemaining = 0;
+        [_currentTrack clearCueForPlaybackRevision:_playingCueRevision];
 
     } else if (playbackStatus == HugPlaybackStatusPreparing) {
         status = TrackStatusPreparing;
 
         _timeElapsed   = -_currentPadding;
-        _timeRemaining = [_currentTrack playDuration];
+        _timeRemaining = MAX(0, [_currentTrack playDuration] - _currentInitialTime);
 
     } else {
         status = TrackStatusPlaying;
@@ -423,6 +433,8 @@ static OSStatus sHandleAudioDevicePropertyChanged(AudioObjectID inObjectID, UInt
 
 - (void) _reconfigureOutput_attempt
 {
+    [[NSNotificationCenter defaultCenter] postNotificationName:PlayerWillConfigureOutputNotification
+        object:self userInfo:@{@"deviceID":@([_outputDevice objectID])}];
     // Properties that we will listen for
     //
     AudioObjectPropertyAddress ioStoppedPropertyAddress  = { kAudioDevicePropertyIOStoppedAbnormally, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster };
@@ -582,9 +594,25 @@ static OSStatus sHandleAudioDevicePropertyChanged(AudioObjectID inObjectID, UInt
         return;
     }
 
+    for (Effect *effect in _effects) {
+        id audioUnit = [effect audioUnit];
+        if ([audioUnit conformsToProtocol:@protocol(EmbraceTrackScouting)]) {
+            [audioUnit embrace_scoutFileURL:fileURL];
+        }
+    }
+
     [self _updateLoudnessAndPreAmp];
 
-    if (![_engine playAudioFile:file startTime:[track startTime] stopTime:[track stopTime] padding:padding]) {
+    // Select the response before the new file can render. The Parametric EQ
+    // keeps the saved curve intact and uses the same coefficient glide as a
+    // knob move, so hard skips and live effect-chain changes cannot introduce
+    // a discontinuity.
+    [self _updateAutomaticFlatEQForTrack:track];
+
+    _currentInitialTime = [track cueOffset];
+    _playingCueRevision = [track cueRevision];
+    EmbraceLog(@"Player", @"Starting %@ with cue %.3f (offset %.3f)", track, [track cueStartTime], _currentInitialTime);
+    if (![_engine playAudioFile:file startTime:[track startTime] stopTime:[track stopTime] padding:padding initialTime:_currentInitialTime]) {
         EmbraceLog(@"Player", @"Couldn't play %@", file);
         [self hardStop];
     }
@@ -593,7 +621,35 @@ static OSStatus sHandleAudioDevicePropertyChanged(AudioObjectID inObjectID, UInt
 }
 
 
+- (void) _updateAutomaticFlatEQForTrack:(Track *)track
+{
+    BOOL automaticFlat = track && TrackGenreUsesUpcomingHighlight([track genre]);
+    for (Effect *effect in _effects) {
+        if (![[[effect type] name] isEqualToString:EmbraceEffectParametricEQ]) continue;
+        EmbraceParametricEQSetAutomaticFlatResponse([effect audioUnit], automaticFlat);
+    }
+    EmbraceLog(@"Player", @"Automatic flat EQ %@ for genre %@",
+        automaticFlat ? @"enabled" : @"disabled", [track genre] ?: @"(missing)");
+}
+
+
 #pragma mark - Public Methods
+
+- (BOOL) seekToTime:(NSTimeInterval)time forTrack:(Track *)track
+{
+    if (!track || track != _currentTrack || !isfinite(time) || ![track didAnalyzeLoudness]) return NO;
+    NSTimeInterval duration = [track playDuration];
+    if (!isfinite(duration) || duration <= 0) return NO;
+
+    time = MIN(MAX(0, time), duration);
+    if (![_engine seekToTime:time]) return NO;
+
+    _currentPadding = 0;
+    EmbraceLog(@"Player", @"Seek to %.3f / %.3f seconds", time, duration);
+    [self _handleEngineUpdate];
+    return YES;
+}
+
 
 - (void) saveEffectState
 {
@@ -605,6 +661,38 @@ static OSStatus sHandleAudioDevicePropertyChanged(AudioObjectID inObjectID, UInt
     }
 
     [[NSUserDefaults standardUserDefaults] setObject:effectsStateArray forKey:sEffectsKey];
+}
+
+
+- (BOOL) setParametricEQEnabled:(BOOL)enabled
+{
+    return [self setEqualizerEnabled:enabled type:EqualizerTypeParametric];
+}
+
+- (BOOL) setEqualizerEnabled:(BOOL)enabled type:(EqualizerType)type
+{
+    NSArray<Effect *> *updated = EmbraceEffectsBySettingEqualizerEnabled(_effects, type, enabled);
+    if (!updated) return NO;
+    if (updated != _effects) self.effects = updated;
+    else [self saveEffectState];
+    return YES;
+}
+
+- (BOOL) selectEqualizerType:(EqualizerType)type
+{
+    (void)type;
+    NSArray<Effect *> *updated = EmbraceEffectsWithSingleParametricEQ(_effects, YES);
+    if (!updated) return NO;
+    Effect *parametric = nil;
+    for (Effect *effect in updated) {
+        if ([effect.type.name isEqualToString:EmbraceEffectParametricEQ]) {
+            parametric = effect;
+            break;
+        }
+    }
+    if (!parametric.audioUnit) return NO;
+    if (updated != _effects) self.effects = updated;
+    return YES;
 }
 
 
@@ -702,6 +790,7 @@ static OSStatus sHandleAudioDevicePropertyChanged(AudioObjectID inObjectID, UInt
 {
     EmbraceLog(@"Player", @"-hardStop");
 
+    [self _updateAutomaticFlatEQForTrack:nil];
     if (!_currentTrack) return;
 
     [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(_setupAndStartPlayback) object:nil];
@@ -743,10 +832,11 @@ static OSStatus sHandleAudioDevicePropertyChanged(AudioObjectID inObjectID, UInt
 
 - (BOOL) _shouldRemarkAsQueued
 {
+    if ([_currentTrack trackStatus] == TrackStatusPlayed) return NO;
     NSTimeInterval playDuration = [_currentTrack playDuration];
 
     if (playDuration > 10.0) {
-        return _timeElapsed < 5.0;
+        return _timeElapsed - _currentInitialTime < 5.0;
     } else {
         return NO;
     }
@@ -806,6 +896,7 @@ static OSStatus sHandleAudioDevicePropertyChanged(AudioObjectID inObjectID, UInt
         [_currentTrack setTrackStatus:TrackStatusPreparing];
 
         _timeElapsed = 0;
+        _currentInitialTime = [currentTrack cueOffset];
     }
 }
 
@@ -855,6 +946,8 @@ static OSStatus sHandleAudioDevicePropertyChanged(AudioObjectID inObjectID, UInt
 
 - (void) setEffects:(NSArray *)effects
 {
+    NSArray *normalized = EmbraceEffectsWithSingleParametricEQ(effects, YES);
+    if (normalized) effects = normalized;
     if (_effects == effects) return;
 
     NSMutableArray *audioUnits = [NSMutableArray array];
@@ -866,8 +959,10 @@ static OSStatus sHandleAudioDevicePropertyChanged(AudioObjectID inObjectID, UInt
     _effects = effects;
 
     [_engine updateEffectAudioUnits:audioUnits];
+    [self _updateAutomaticFlatEQForTrack:_currentTrack];
 
     [self saveEffectState];
+    [[NSNotificationCenter defaultCenter] postNotificationName:PlayerEffectsDidChangeNotification object:self];
 }
 
 

@@ -7,6 +7,23 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		EA2610250000000000000012 /* RestorationAudioUnit.mm in Sources */ = {isa = PBXBuildFile; fileRef = EA2610250000000000000002 /* RestorationAudioUnit.mm */; };
+		EA2610250000000000000014 /* ParameterFormView.m in Sources */ = {isa = PBXBuildFile; fileRef = EA2610250000000000000004 /* ParameterFormView.m */; };
+		EA2610250000000000000016 /* declick_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EA2610250000000000000006 /* declick_core.cpp */; };
+		EA2610250000000000000018 /* dehum_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EA2610250000000000000008 /* dehum_core.cpp */; };
+		EA2610220000000000000012 /* AuditionPlayer.m in Sources */ = {isa = PBXBuildFile; fileRef = EA2610220000000000000002; };
+		EA2610220000000000000014 /* AuditionRoute.m in Sources */ = {isa = PBXBuildFile; fileRef = EA2610220000000000000004; };
+		EA1020210000000000000003 /* EQStateButton.m in Sources */ = {isa = PBXBuildFile; fileRef = EA1020210000000000000002; };
+		EA1020200000000000000013 /* SetlistEQButton.m in Sources */ = {isa = PBXBuildFile; fileRef = EA1020200000000000000004; };
+		EA1020200000000000000011 /* EmbraceParametricEQ-Violin.aupreset in Resources */ = {isa = PBXBuildFile; fileRef = EA1020200000000000000001; };
+		EA1020200000000000000012 /* EmbraceParametricEQ-Singer.aupreset in Resources */ = {isa = PBXBuildFile; fileRef = EA1020200000000000000002; };
+		EA1017100000000000000001 /* ParametricEQAudioUnit.mm in Sources */ = {isa = PBXBuildFile; fileRef = EA1017000000000000000001 /* ParametricEQAudioUnit.mm */; };
+		EA1017100000000000000003 /* ParametricEQView.mm in Sources */ = {isa = PBXBuildFile; fileRef = EA1017000000000000000003 /* ParametricEQView.mm */; };
+		EA1017100000000000000005 /* paraeq_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EA1017000000000000000005 /* paraeq_core.cpp */; };
+		EA1017100000000000000008 /* AudioUnitStateValidation.m in Sources */ = {isa = PBXBuildFile; fileRef = EA1017000000000000000008 /* AudioUnitStateValidation.m */; };
+		EA0010150000000000000013 /* InterfaceAppearance.m in Sources */ = {isa = PBXBuildFile; fileRef = EA0010150000000000000012; };
+		EA0010150000000000000003 /* PlaybackSeekView.m in Sources */ = {isa = PBXBuildFile; fileRef = EA0010150000000000000002; };
+		EA0021210000000000000003 /* TrackCueController.m in Sources */ = {isa = PBXBuildFile; fileRef = EA0021210000000000000002; };
 		550680301887711000441AAE /* TimeStringValueTransformer.m in Sources */ = {isa = PBXBuildFile; fileRef = 5506802F1887711000441AAE /* TimeStringValueTransformer.m */; };
 		550C63B81FE26EE5007841BC /* EscapePod.m in Sources */ = {isa = PBXBuildFile; fileRef = 550C63B71FE26EE5007841BC /* EscapePod.m */; };
 		550C63BB1FE26F12007841BC /* Telemetry.m in Sources */ = {isa = PBXBuildFile; fileRef = 550C63B91FE26F12007841BC /* Telemetry.m */; };
@@ -121,7 +138,6 @@
 		55C82A9E1B57423F0067DEBC /* AUBandpass.aupreset in Resources */ = {isa = PBXBuildFile; fileRef = 55C82A9D1B57423F0067DEBC /* AUBandpass.aupreset */; };
 		55C82AA01B5742EB0067DEBC /* AUParametricEQ.aupreset in Resources */ = {isa = PBXBuildFile; fileRef = 55C82A9F1B5742EB0067DEBC /* AUParametricEQ.aupreset */; };
 		55CF2786187A23BD0042C92A /* MusicAppManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 55CF2785187A23BD0042C92A /* MusicAppManager.m */; };
-		55CF2788187A241A0042C92A /* ScriptingBridge.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 55CF2787187A241A0042C92A /* ScriptingBridge.framework */; };
 		55CF279A187A464B0042C92A /* TrackTableCellView.m in Sources */ = {isa = PBXBuildFile; fileRef = 55CF2799187A464B0042C92A /* TrackTableCellView.m */; };
 		55CF27AA187AB2650042C92A /* EditEffectController.m in Sources */ = {isa = PBXBuildFile; fileRef = 55CF27A9187AB2650042C92A /* EditEffectController.m */; };
 		55CF848E18BF27AC00EF33F7 /* Embrace.sdef in Resources */ = {isa = PBXBuildFile; fileRef = 55CF848D18BF27AC00EF33F7 /* Embrace.sdef */; };
@@ -147,6 +163,9 @@
 		55F7ABEB18B04EB0006B6FBB /* DebugWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = 55F7ABEA18B04EB0006B6FBB /* DebugWindow.xib */; };
 		55F7ABF518B1A18C006B6FBB /* HugLimiter.m in Sources */ = {isa = PBXBuildFile; fileRef = 55F7ABF418B1A18C006B6FBB /* HugLimiter.m */; settings = {COMPILER_FLAGS = "-Ofast"; }; };
 		55F7ABFA18B21C31006B6FBB /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 55F7ABF718B21C31006B6FBB /* Localizable.strings */; };
+		EA2610200000000000000012 /* MusicLibrary.m in Sources */ = {isa = PBXBuildFile; fileRef = EA2610200000000000000002; };
+		EA2610200000000000000014 /* MusicLibraryController.m in Sources */ = {isa = PBXBuildFile; fileRef = EA2610200000000000000004; };
+		EA2610221000000000000012 /* MusicLibraryBackupStore.m in Sources */ = {isa = PBXBuildFile; fileRef = EA2610221000000000000002; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -206,6 +225,41 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		EA2610250000000000000001 /* RestorationAudioUnit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = RestorationAudioUnit.h; path = Source/RestorationAudioUnit.h; sourceTree = SOURCE_ROOT; };
+		EA2610250000000000000002 /* RestorationAudioUnit.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = RestorationAudioUnit.mm; path = Source/RestorationAudioUnit.mm; sourceTree = SOURCE_ROOT; };
+		EA2610250000000000000003 /* ParameterFormView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ParameterFormView.h; path = Source/ParameterFormView.h; sourceTree = SOURCE_ROOT; };
+		EA2610250000000000000004 /* ParameterFormView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = ParameterFormView.m; path = Source/ParameterFormView.m; sourceTree = SOURCE_ROOT; };
+		EA2610250000000000000005 /* declick_core.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = declick_core.h; path = Source/declick_core.h; sourceTree = SOURCE_ROOT; };
+		EA2610250000000000000006 /* declick_core.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = declick_core.cpp; path = Source/declick_core.cpp; sourceTree = SOURCE_ROOT; };
+		EA2610250000000000000007 /* dehum_core.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = dehum_core.h; path = Source/dehum_core.h; sourceTree = SOURCE_ROOT; };
+		EA2610250000000000000008 /* dehum_core.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = dehum_core.cpp; path = Source/dehum_core.cpp; sourceTree = SOURCE_ROOT; };
+		EA2610250000000000000009 /* HugAudioLookahead.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = HugAudioLookahead.h; path = Source/HugAudioLookahead.h; sourceTree = SOURCE_ROOT; };
+		EA2610220000000000000001 /* AuditionPlayer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AuditionPlayer.h; path = Source/AuditionPlayer.h; sourceTree = SOURCE_ROOT; };
+		EA2610220000000000000002 /* AuditionPlayer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = AuditionPlayer.m; path = Source/AuditionPlayer.m; sourceTree = SOURCE_ROOT; };
+		EA2610220000000000000003 /* AuditionRoute.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AuditionRoute.h; path = Source/AuditionRoute.h; sourceTree = SOURCE_ROOT; };
+		EA2610220000000000000004 /* AuditionRoute.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = AuditionRoute.m; path = Source/AuditionRoute.m; sourceTree = SOURCE_ROOT; };
+		EA1020210000000000000001 /* EQStateButton.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Source/EQStateButton.h; sourceTree = SOURCE_ROOT; };
+		EA1020210000000000000002 /* EQStateButton.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Source/EQStateButton.m; sourceTree = SOURCE_ROOT; };
+		EA1020200000000000000003 /* SetlistEQButton.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = SetlistEQButton.h; path = Source/SetlistEQButton.h; sourceTree = SOURCE_ROOT; };
+		EA1020200000000000000004 /* SetlistEQButton.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = SetlistEQButton.m; path = Source/SetlistEQButton.m; sourceTree = SOURCE_ROOT; };
+		EA1020200000000000000001 /* EmbraceParametricEQ-Violin.aupreset */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = "EmbraceParametricEQ-Violin.aupreset"; path = "Resources/EmbraceParametricEQ-Violin.aupreset"; sourceTree = SOURCE_ROOT; };
+		EA1020200000000000000002 /* EmbraceParametricEQ-Singer.aupreset */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = "EmbraceParametricEQ-Singer.aupreset"; path = "Resources/EmbraceParametricEQ-Singer.aupreset"; sourceTree = SOURCE_ROOT; };
+		EA1017000000000000000000 /* ParametricEQAudioUnit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ParametricEQAudioUnit.h; path = Source/ParametricEQAudioUnit.h; sourceTree = SOURCE_ROOT; };
+		EA1017000000000000000001 /* ParametricEQAudioUnit.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = ParametricEQAudioUnit.mm; path = Source/ParametricEQAudioUnit.mm; sourceTree = SOURCE_ROOT; };
+		EA1017000000000000000002 /* ParametricEQView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ParametricEQView.h; path = Source/ParametricEQView.h; sourceTree = SOURCE_ROOT; };
+		EA1017000000000000000003 /* ParametricEQView.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = ParametricEQView.mm; path = Source/ParametricEQView.mm; sourceTree = SOURCE_ROOT; };
+		EA1017000000000000000004 /* paraeq_core.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = paraeq_core.h; path = Source/paraeq_core.h; sourceTree = SOURCE_ROOT; };
+		EA1017000000000000000005 /* paraeq_core.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = paraeq_core.cpp; path = Source/paraeq_core.cpp; sourceTree = SOURCE_ROOT; };
+		EA1017000000000000000006 /* EmbraceAudioUnitUtils.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = EmbraceAudioUnitUtils.h; path = Source/EmbraceAudioUnitUtils.h; sourceTree = SOURCE_ROOT; };
+		EA1017000000000000000007 /* AudioUnitStateValidation.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AudioUnitStateValidation.h; path = Source/AudioUnitStateValidation.h; sourceTree = SOURCE_ROOT; };
+		EA1017000000000000000008 /* AudioUnitStateValidation.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = AudioUnitStateValidation.m; path = Source/AudioUnitStateValidation.m; sourceTree = SOURCE_ROOT; };
+		EA1017000000000000000009 /* EffectParameterDescribing.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = EffectParameterDescribing.h; path = Source/EffectParameterDescribing.h; sourceTree = SOURCE_ROOT; };
+		EA0010150000000000000011 /* InterfaceAppearance.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = InterfaceAppearance.h; path = Source/InterfaceAppearance.h; sourceTree = SOURCE_ROOT; };
+		EA0010150000000000000012 /* InterfaceAppearance.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = InterfaceAppearance.m; path = Source/InterfaceAppearance.m; sourceTree = SOURCE_ROOT; };
+		EA0010150000000000000001 /* PlaybackSeekView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = PlaybackSeekView.h; path = Source/PlaybackSeekView.h; sourceTree = SOURCE_ROOT; };
+		EA0010150000000000000002 /* PlaybackSeekView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = PlaybackSeekView.m; path = Source/PlaybackSeekView.m; sourceTree = SOURCE_ROOT; };
+		EA0021210000000000000001 /* TrackCueController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = TrackCueController.h; path = Source/TrackCueController.h; sourceTree = SOURCE_ROOT; };
+		EA0021210000000000000002 /* TrackCueController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = TrackCueController.m; path = Source/TrackCueController.m; sourceTree = SOURCE_ROOT; };
 		5506802E1887711000441AAE /* TimeStringValueTransformer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = TimeStringValueTransformer.h; path = Source/TimeStringValueTransformer.h; sourceTree = SOURCE_ROOT; };
 		5506802F1887711000441AAE /* TimeStringValueTransformer.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = TimeStringValueTransformer.m; path = Source/TimeStringValueTransformer.m; sourceTree = SOURCE_ROOT; };
 		550C63B61FE26EE5007841BC /* EscapePod.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = EscapePod.h; path = Source/EscapePod.h; sourceTree = "<group>"; };
@@ -241,7 +295,6 @@
 		5514B6621CDEE9DE00F238B7 /* TrackKeys.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = TrackKeys.h; path = Source/TrackKeys.h; sourceTree = "<group>"; };
 		5514B6631CDEE9DE00F238B7 /* TrackKeys.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = TrackKeys.m; path = Source/TrackKeys.m; sourceTree = "<group>"; };
 		5514B6781CDF4AA200F238B7 /* Worker-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = "Worker-Info.plist"; path = "Resources/Worker-Info.plist"; sourceTree = SOURCE_ROOT; };
-		55169D491F95A6FE003779FA /* iTunesManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = iTunesManager.h; path = Source/iTunesManager.h; sourceTree = "<group>"; };
 		55169D4B1F9ACBFA003779FA /* test_3s_d4.m4a */ = {isa = PBXFileReference; lastKnownFileType = file; name = test_3s_d4.m4a; path = "Resources/Test Sounds/test_3s_d4.m4a"; sourceTree = "<group>"; };
 		55169D4C1F9ACBFA003779FA /* test_3s_e4.m4a */ = {isa = PBXFileReference; lastKnownFileType = file; name = test_3s_e4.m4a; path = "Resources/Test Sounds/test_3s_e4.m4a"; sourceTree = "<group>"; };
 		55169D4D1F9ACBFA003779FA /* test_3s_c4.m4a */ = {isa = PBXFileReference; lastKnownFileType = file; name = test_3s_c4.m4a; path = "Resources/Test Sounds/test_3s_c4.m4a"; sourceTree = "<group>"; };
@@ -400,7 +453,6 @@
 		55C82A9F1B5742EB0067DEBC /* AUParametricEQ.aupreset */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xml; name = AUParametricEQ.aupreset; path = Resources/AUParametricEQ.aupreset; sourceTree = SOURCE_ROOT; };
 		55CF2784187A23BD0042C92A /* MusicAppManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MusicAppManager.h; path = Source/MusicAppManager.h; sourceTree = SOURCE_ROOT; };
 		55CF2785187A23BD0042C92A /* MusicAppManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MusicAppManager.m; path = Source/MusicAppManager.m; sourceTree = SOURCE_ROOT; };
-		55CF2787187A241A0042C92A /* ScriptingBridge.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ScriptingBridge.framework; path = System/Library/Frameworks/ScriptingBridge.framework; sourceTree = SDKROOT; };
 		55CF2798187A464B0042C92A /* TrackTableCellView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = TrackTableCellView.h; path = Source/TrackTableCellView.h; sourceTree = SOURCE_ROOT; };
 		55CF2799187A464B0042C92A /* TrackTableCellView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = TrackTableCellView.m; path = Source/TrackTableCellView.m; sourceTree = SOURCE_ROOT; };
 		55CF27A8187AB2650042C92A /* EditEffectController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = EditEffectController.h; path = Source/EditEffectController.h; sourceTree = SOURCE_ROOT; };
@@ -448,6 +500,12 @@
 		55F7ABF318B1A18C006B6FBB /* HugLimiter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = HugLimiter.h; path = Source/HugLimiter.h; sourceTree = "<group>"; };
 		55F7ABF418B1A18C006B6FBB /* HugLimiter.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = HugLimiter.m; path = Source/HugLimiter.m; sourceTree = "<group>"; };
 		55F7ABF818B21C31006B6FBB /* en */ = {isa = PBXFileReference; fileEncoding = 10; lastKnownFileType = text.plist.strings; name = en; path = Resources/en.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };
+		EA2610200000000000000001 /* MusicLibrary.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = MusicLibrary.h; path = Source/MusicLibrary.h; sourceTree = SOURCE_ROOT; };
+		EA2610200000000000000002 /* MusicLibrary.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = MusicLibrary.m; path = Source/MusicLibrary.m; sourceTree = SOURCE_ROOT; };
+		EA2610200000000000000003 /* MusicLibraryController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = MusicLibraryController.h; path = Source/MusicLibraryController.h; sourceTree = SOURCE_ROOT; };
+		EA2610200000000000000004 /* MusicLibraryController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = MusicLibraryController.m; path = Source/MusicLibraryController.m; sourceTree = SOURCE_ROOT; };
+		EA2610221000000000000001 /* MusicLibraryBackupStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = MusicLibraryBackupStore.h; path = Source/MusicLibraryBackupStore.h; sourceTree = SOURCE_ROOT; };
+		EA2610221000000000000002 /* MusicLibraryBackupStore.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = MusicLibraryBackupStore.m; path = Source/MusicLibraryBackupStore.m; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -483,7 +541,6 @@
 				55A0B16D188F6FD700866F04 /* Accelerate.framework in Frameworks */,
 				555B3C831880EFD20088C15C /* QuartzCore.framework in Frameworks */,
 				55BC0B0F1877FC4D00D84481 /* CoreAudioKit.framework in Frameworks */,
-				55CF2788187A241A0042C92A /* ScriptingBridge.framework in Frameworks */,
 				55BC0B1B18780D1000D84481 /* AudioToolbox.framework in Frameworks */,
 				55BC0B1918780A0200D84481 /* CoreAudio.framework in Frameworks */,
 				55BC0B0A1877F26300D84481 /* AudioUnit.framework in Frameworks */,
@@ -688,12 +745,10 @@
 			children = (
 				55779D5F20CA0ADA00DB660F /* iTunesLibrary.framework */,
 				550C63C01FE270E3007841BC /* SystemConfiguration.framework */,
-				55169D491F95A6FE003779FA /* iTunesManager.h */,
 				5549FCA51F8AF767009006D2 /* CoreServices.framework */,
 				553E44E118C5D23400E8D7B9 /* IOKit.framework */,
 				55A0B16C188F6FD700866F04 /* Accelerate.framework */,
 				555B3C821880EFD20088C15C /* QuartzCore.framework */,
-				55CF2787187A241A0042C92A /* ScriptingBridge.framework */,
 				55BC0B1A18780D1000D84481 /* AudioToolbox.framework */,
 				55BC0B1818780A0200D84481 /* CoreAudio.framework */,
 				55BC0B0E1877FC4D00D84481 /* CoreAudioKit.framework */,
@@ -868,10 +923,39 @@
 				556098131B47CABD008516C3 /* MenuLabelView.m */,
 				55717BF3187EA65400213213 /* SetlistButton.h */,
 				55717BF4187EA65400213213 /* SetlistButton.m */,
+				EA1020210000000000000001 /* EQStateButton.h */,
+				EA1020210000000000000002 /* EQStateButton.m */,
+				EA1020200000000000000003 /* SetlistEQButton.h */,
+				EA1020200000000000000004 /* SetlistEQButton.m */,
 				5514B6381CDD694700F238B7 /* SetlistDangerView.h */,
 				5514B6391CDD694700F238B7 /* SetlistDangerView.m */,
 				55ADE93618824338008DC245 /* SetlistMeterView.h */,
 				55ADE93718824338008DC245 /* SetlistMeterView.m */,
+				EA1017000000000000000000 /* ParametricEQAudioUnit.h */,
+				EA1017000000000000000001 /* ParametricEQAudioUnit.mm */,
+				EA1017000000000000000002 /* ParametricEQView.h */,
+				EA1017000000000000000003 /* ParametricEQView.mm */,
+				EA1017000000000000000004 /* paraeq_core.h */,
+				EA1017000000000000000005 /* paraeq_core.cpp */,
+				EA1017000000000000000006 /* EmbraceAudioUnitUtils.h */,
+				EA1017000000000000000007 /* AudioUnitStateValidation.h */,
+				EA1017000000000000000008 /* AudioUnitStateValidation.m */,
+				EA1017000000000000000009 /* EffectParameterDescribing.h */,
+				EA2610250000000000000001 /* RestorationAudioUnit.h */,
+				EA2610250000000000000002 /* RestorationAudioUnit.mm */,
+				EA2610250000000000000003 /* ParameterFormView.h */,
+				EA2610250000000000000004 /* ParameterFormView.m */,
+				EA2610250000000000000005 /* declick_core.h */,
+				EA2610250000000000000006 /* declick_core.cpp */,
+				EA2610250000000000000007 /* dehum_core.h */,
+				EA2610250000000000000008 /* dehum_core.cpp */,
+				EA2610250000000000000009 /* HugAudioLookahead.h */,
+				EA0010150000000000000011 /* InterfaceAppearance.h */,
+				EA0010150000000000000012 /* InterfaceAppearance.m */,
+				EA0010150000000000000001 /* PlaybackSeekView.h */,
+				EA0010150000000000000002 /* PlaybackSeekView.m */,
+				EA0021210000000000000001 /* TrackCueController.h */,
+				EA0021210000000000000002 /* TrackCueController.m */,
 				55ADE93318815EA8008DC245 /* SetlistPlayBar.h */,
 				55ADE93418815EA8008DC245 /* SetlistPlayBar.m */,
 				5572C17C1F00B743007BE284 /* SetlistProgressBar.h */,
@@ -906,6 +990,16 @@
 			isa = PBXGroup;
 			children = (
 				55CF2784187A23BD0042C92A /* MusicAppManager.h */,
+				EA2610220000000000000001 /* AuditionPlayer.h */,
+				EA2610220000000000000002 /* AuditionPlayer.m */,
+				EA2610220000000000000003 /* AuditionRoute.h */,
+				EA2610220000000000000004 /* AuditionRoute.m */,
+				EA2610200000000000000004 /* MusicLibraryController.m */,
+				EA2610200000000000000003 /* MusicLibraryController.h */,
+				EA2610200000000000000002 /* MusicLibrary.m */,
+				EA2610200000000000000001 /* MusicLibrary.h */,
+				EA2610221000000000000001 /* MusicLibraryBackupStore.h */,
+				EA2610221000000000000002 /* MusicLibraryBackupStore.m */,
 				55CF2785187A23BD0042C92A /* MusicAppManager.m */,
 			);
 			name = Music.app;
@@ -951,6 +1045,8 @@
 				55F7ABD318AF1B41006B6FBB /* AUMultibandCompressor.aupreset */,
 				55C82A9F1B5742EB0067DEBC /* AUParametricEQ.aupreset */,
 				55C82A9D1B57423F0067DEBC /* AUBandpass.aupreset */,
+				EA1020200000000000000001 /* EmbraceParametricEQ-Violin.aupreset */,
+				EA1020200000000000000002 /* EmbraceParametricEQ-Singer.aupreset */,
 				55F7ABD418AF1B41006B6FBB /* AUDynamicsProcessor.aupreset */,
 				55F7ABD518AF1B41006B6FBB /* AULowpass.aupreset */,
 				55F7ABD618AF1B41006B6FBB /* AUHipass.aupreset */,
@@ -1121,6 +1217,8 @@
 				55CF848E18BF27AC00EF33F7 /* Embrace.sdef in Resources */,
 				556B496420CF772D00A4E83E /* Assets.xcassets in Resources */,
 				55C82A9E1B57423F0067DEBC /* AUBandpass.aupreset in Resources */,
+				EA1020200000000000000011 /* EmbraceParametricEQ-Violin.aupreset in Resources */,
+				EA1020200000000000000012 /* EmbraceParametricEQ-Singer.aupreset in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1225,9 +1323,22 @@
 				55F3B7D218779B3000E8FEC8 /* Player.m in Sources */,
 				555A701B1890BCBF00305EC6 /* Application.m in Sources */,
 				55F3B7B11877885800E8FEC8 /* SetlistController.m in Sources */,
+				EA1020210000000000000003 /* EQStateButton.m in Sources */,
+				EA1020200000000000000013 /* SetlistEQButton.m in Sources */,
 				55F7ABF518B1A18C006B6FBB /* HugLimiter.m in Sources */,
 				557C2BFB1895F325002FAFEA /* CenteredTextField.m in Sources */,
 				550680301887711000441AAE /* TimeStringValueTransformer.m in Sources */,
+				EA1017100000000000000001 /* ParametricEQAudioUnit.mm in Sources */,
+				EA1017100000000000000003 /* ParametricEQView.mm in Sources */,
+				EA1017100000000000000005 /* paraeq_core.cpp in Sources */,
+				EA1017100000000000000008 /* AudioUnitStateValidation.m in Sources */,
+				EA2610250000000000000012 /* RestorationAudioUnit.mm in Sources */,
+				EA2610250000000000000014 /* ParameterFormView.m in Sources */,
+				EA2610250000000000000016 /* declick_core.cpp in Sources */,
+				EA2610250000000000000018 /* dehum_core.cpp in Sources */,
+				EA0010150000000000000013 /* InterfaceAppearance.m in Sources */,
+				EA0010150000000000000003 /* PlaybackSeekView.m in Sources */,
+				EA0021210000000000000003 /* TrackCueController.m in Sources */,
 				55ADE93518815EA8008DC245 /* SetlistPlayBar.m in Sources */,
 				554FCB9D1DFCF0E900DE697E /* MaskView.m in Sources */,
 				5555F5501B4D19220092A8C2 /* HugProtectedBuffer.m in Sources */,
@@ -1253,6 +1364,11 @@
 				55D7000B20DC9F3B002FB978 /* HairlineView.m in Sources */,
 				555953E921B6834D0032EE54 /* HugMeterData.m in Sources */,
 				55CF2786187A23BD0042C92A /* MusicAppManager.m in Sources */,
+				EA2610220000000000000012 /* AuditionPlayer.m in Sources */,
+				EA2610220000000000000014 /* AuditionRoute.m in Sources */,
+				EA2610200000000000000014 /* MusicLibraryController.m in Sources */,
+				EA2610200000000000000012 /* MusicLibrary.m in Sources */,
+				EA2610221000000000000012 /* MusicLibraryBackupStore.m in Sources */,
 				55A708B118A715C1007BD7C0 /* DragSongsHereView.m in Sources */,
 				55102B431B53564500308F55 /* EffectAdditions.m in Sources */,
 				552C9E4C1883888E0041C160 /* PreferencesController.m in Sources */,
@@ -1385,7 +1501,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 556EAEE21FEA013000EF68C3 /* Embrace_Debug.xcconfig */;
 			buildSettings = {
-				MARKETING_VERSION = 4.1;
+				MARKETING_VERSION = 4.4.1;
 			};
 			name = Debug;
 		};
@@ -1393,7 +1509,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 556EAEE31FEA013000EF68C3 /* Embrace_Profile.xcconfig */;
 			buildSettings = {
-				MARKETING_VERSION = 4.1;
+				MARKETING_VERSION = 4.4.1;
 			};
 			name = Profile;
 		};
@@ -1407,7 +1523,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 556EAEE11FEA013000EF68C3 /* Embrace_Release.xcconfig */;
 			buildSettings = {
-				MARKETING_VERSION = 4.1;
+				MARKETING_VERSION = 4.4.1;
 			};
 			name = Release;
 		};
@@ -1421,7 +1537,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 556EAEE01FEA013000EF68C3 /* Embrace_Submission.xcconfig */;
 			buildSettings = {
-				MARKETING_VERSION = 4.1;
+				MARKETING_VERSION = 4.4.1;
 			};
 			name = Submission;
 		};

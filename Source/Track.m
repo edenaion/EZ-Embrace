@@ -22,6 +22,7 @@ static NSString * const sStopsAfterPlayingKey = @"stopsAfterPlaying";
 static NSString * const sIgnoresAutoGapKey    = @"ignoresAutoGap";
 static NSString * const sStatusKey            = @"trackStatus";
 static NSString * const sPlayedTimeKey        = @"playedTime";
+static NSString * const sCueStartTimeKey      = @"cueStartTime";
 
 
 @interface Track ()
@@ -60,6 +61,7 @@ static NSString * const sPlayedTimeKey        = @"playedTime";
     BOOL            _dirty;
     BOOL            _cleared;
     BOOL            _priorityAnalysisRequested;
+    BOOL            _updatingState;
 }
 
 @dynamic playDuration, silenceAtStart, silenceAtEnd, tonality;
@@ -132,7 +134,11 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     if ([key isEqualToString:@"playDuration"]) {
         affectingKeys = @[ @"duration", @"decodedDuration", @"stopTime", @"startTime" ];
     } else if ([key isEqualToString:@"silenceAtStart"]) {
-        affectingKeys = @[ @"overviewData", @"startTime" ];
+        affectingKeys = @[ @"overviewData", @"startTime", @"cueStartTime" ];
+    } else if ([key isEqualToString:@"cueOffset"]) {
+        affectingKeys = @[ @"cueStartTime", @"startTime", @"playDuration" ];
+    } else if ([key isEqualToString:@"queuedPlayDuration"]) {
+        affectingKeys = @[ @"playDuration", @"cueOffset" ];
     } else if ([key isEqualToString:@"silenceAtEnd"]) {
         affectingKeys = @[ @"overviewData", @"stopTime" ];
     } else if ([key isEqualToString:@"tonality"]) {
@@ -270,6 +276,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
 
     NSMutableDictionary *state = [NSMutableDictionary dictionary];
     [self _writeStateToDictionary:state];
+    [state removeObjectForKey:sCueStartTimeKey];
 
     Track *result = [[[self class] alloc] _initWithUUID:UUID state:state];
     result->_dirty = YES;
@@ -284,6 +291,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
 
 - (void) _updateState:(NSDictionary *)state initialLoad:(BOOL)initialLoad
 {
+    _updatingState = YES;
     BOOL postTitleChanged = NO;
     BOOL postDurationChanged = NO;
 
@@ -312,7 +320,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
                 postTitleChanged = YES;
             }
             
-            if ([@[ @"duration", @"decodedDuration", @"startTime", @"endTime" ] containsObject:key]) {
+            if ([@[ @"duration", @"decodedDuration", @"startTime", @"stopTime", @"endTime", sCueStartTimeKey ] containsObject:key]) {
                 postDurationChanged = YES;
             }
         }
@@ -322,7 +330,10 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     NSNumber *startTime    = [state objectForKey:TrackKeyStartTime];
     NSNumber *stopTime     = [state objectForKey:TrackKeyStopTime];
 
-    if (overviewData || startTime || stopTime) {
+    _updatingState = NO;
+    [self setCueStartTime:_cueStartTime];
+
+    if (overviewData || startTime || stopTime || [state objectForKey:sCueStartTimeKey]) {
         [self _calculateSilence];
     }
     
@@ -367,6 +378,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     if (_trackLabel)     [state setObject:@(_trackLabel)        forKey:sLabelKey];
     if (_trackStatus)    [state setObject:@(_trackStatus)       forKey:sStatusKey];
     if (_playedTime)     [state setObject:@(_playedTime)        forKey:sPlayedTimeKey];
+    if (_cueStartTime)   [state setObject:@(_cueStartTime)      forKey:sCueStartTimeKey];
 
     if (_stopsAfterPlaying) {
         [state setObject:@YES forKey:sStopsAfterPlayingKey];
@@ -621,8 +633,9 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
         NSInteger startIndex = 0;
         NSInteger sampleCount = 0;
 
-        if (_startTime) {
-            startIndex = (_overviewRate * _startTime);
+        NSTimeInterval audibleStart = _startTime + [self cueOffset];
+        if (audibleStart) {
+            startIndex = (_overviewRate * audibleStart);
         }
 
         for (NSInteger i = startIndex; i < length; i++) {
@@ -747,6 +760,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
         
         [self setStartTime:startTime];
         [self setStopTime: stopTime];
+        [self setCueStartTime:_cueStartTime];
     }
     
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_handleDidUpdateLibraryMetadata:) name:MusicAppManagerDidUpdateLibraryMetadataNotification object:nil];
@@ -764,6 +778,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     
     [self setStartTime:startTime];
     [self setStopTime: stopTime];
+    [self setCueStartTime:_cueStartTime];
 }
 
 
@@ -918,6 +933,45 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     NSTimeInterval duration = _decodedDuration ? _decodedDuration : _duration;
     NSTimeInterval stopTime = _stopTime ? _stopTime : duration;
     return stopTime - _startTime;
+}
+
+
+- (void) setCueStartTime:(NSTimeInterval)cueStartTime
+{
+    if (!isfinite(cueStartTime) || cueStartTime < 0) cueStartTime = 0;
+    NSTimeInterval duration = [self playDuration];
+    if (!_updatingState && duration > 0 && cueStartTime > 0) {
+        if (cueStartTime >= _startTime + duration) cueStartTime = 0;
+        else cueStartTime = MAX(_startTime, cueStartTime);
+    }
+    if (_cueStartTime == cueStartTime) return;
+    _cueStartTime = cueStartTime;
+    _cueRevision++;
+    [self _invalidateSilence];
+    _dirty = YES;
+    if (!_updatingState) {
+        [self _saveStateImmediately:YES];
+        [[NSNotificationCenter defaultCenter] postNotificationName:TrackDidModifyDurationNotificationName object:self];
+    }
+}
+
+
+- (NSTimeInterval) cueOffset
+{
+    NSTimeInterval duration = [self playDuration];
+    NSTimeInterval offset = MAX(0, _cueStartTime - _startTime);
+    return isfinite(offset) && offset < duration ? offset : 0;
+}
+
+
+- (NSTimeInterval) queuedPlayDuration
+{
+    return MAX(0, [self playDuration] - [self cueOffset]);
+}
+
+- (void) clearCueForPlaybackRevision:(NSUInteger)revision
+{
+    if (revision == _cueRevision) self.cueStartTime = 0;
 }
 
 

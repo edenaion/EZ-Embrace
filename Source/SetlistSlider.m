@@ -7,6 +7,13 @@
 
 @implementation SetlistSlider
 
+- (void) setLevelColor:(NSColor *)levelColor
+{
+    if (_levelColor == levelColor || [_levelColor isEqual:levelColor]) return;
+    _levelColor = levelColor;
+    [self setNeedsDisplay:YES];
+}
+
 - (void) mouseDown:(NSEvent *)theEvent
 {
     [_dragDelegate sliderDidStartDrag:self];
@@ -113,6 +120,9 @@
     [NSGraphicsContext saveGraphicsState];
   
     NSColor *activeColor = [NSColor colorNamed:isMainWindow ? @"MeterFilledMain" : @"MeterFilled"];
+    if ([[self controlView] isKindOfClass:[SetlistSlider class]]) {
+        activeColor = [(SetlistSlider *)[self controlView] levelColor] ?: activeColor;
+    }
     [activeColor set];
 
     [[NSBezierPath bezierPathWithRect:leftRect] addClip];

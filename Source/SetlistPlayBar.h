@@ -2,11 +2,11 @@
 // MIT License (or) 1-clause BSD License
 
 #import <Cocoa/Cocoa.h>
+#import "PlaybackSeekView.h"
 
 
-@interface SetlistPlayBar : NSView <EmbraceWindowListener>
+@interface SetlistPlayBar : PlaybackSeekView <EmbraceWindowListener>
 
-@property (nonatomic) float percentage;
 @property (nonatomic, getter=isPlaying) BOOL playing;
 
 @end

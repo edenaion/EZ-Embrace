@@ -10,6 +10,7 @@
 
 @property (nonatomic, weak) id<SetlistSliderDragDelegate> dragDelegate;
 @property (readonly) NSRect knobRect;
+@property (nonatomic, strong) NSColor *levelColor;
 
 @end
 

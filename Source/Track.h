@@ -69,6 +69,13 @@ typedef NS_ENUM(NSInteger, TrackLabel) {
 
 @property (nonatomic) NSTimeInterval expectedDuration;
 
+// Single-use absolute file position. Zero uses the existing file or Music trim.
+@property (nonatomic) NSTimeInterval cueStartTime;
+@property (nonatomic, readonly) NSTimeInterval cueOffset;
+@property (nonatomic, readonly) NSTimeInterval queuedPlayDuration;
+@property (nonatomic, readonly) NSUInteger cueRevision;
+- (void) clearCueForPlaybackRevision:(NSUInteger)revision;
+
 @property (nonatomic) NSTimeInterval estimatedEndTime;
 @property (nonatomic) NSError *error;
 
