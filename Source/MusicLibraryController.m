@@ -11,6 +11,7 @@
 
 static NSString * const MusicLibraryRowNumberColumn = @"visibleRowNumber";
 static NSString * const MusicLibraryCompactRowNumberMigration = @"MusicLibrary.compactRowNumberColumn.v3";
+static NSString * const MusicLibraryReferenceColumnOrderMigration = @"MusicLibrary.referenceColumnOrder.v1";
 static const CGFloat MusicLibraryTransportButtonWidth = 84;
 static const CGFloat MusicLibraryTransportButtonHeight = 30;
 
@@ -143,8 +144,7 @@ static CGFloat MusicLibraryMinimumRowNumberWidth(void)
     [_playlistTable addTableColumn:playlistColumn];
     _trackTable = [self _makeTable];
     _trackTable.accessibilityLabel = @"Music library tracks";
-    _trackTable.autosaveName = @"MusicLibraryColumns";
-    _trackTable.autosaveTableColumns = YES;
+    _trackTable.allowsColumnReordering = YES;
     _trackTable.target = self;
     _trackTable.doubleAction = @selector(_addSelection:);
     NSTableColumn *rowNumber = [[NSTableColumn alloc] initWithIdentifier:MusicLibraryRowNumberColumn];
@@ -171,6 +171,10 @@ static CGFloat MusicLibraryMinimumRowNumberWidth(void)
             selector:text ? @selector(localizedStandardCompare:) : @selector(compare:)];
         [_trackTable addTableColumn:column];
     }
+    // AppKit restores saved order and widths when autosaving is enabled. All columns
+    // must exist first so the restored identifiers can be matched.
+    _trackTable.autosaveName = @"MusicLibraryColumns";
+    _trackTable.autosaveTableColumns = YES;
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     if (![defaults boolForKey:MusicLibraryCompactRowNumberMigration]) {
         rowNumber.width = MusicLibraryCompactRowNumberWidth();
@@ -178,6 +182,10 @@ static CGFloat MusicLibraryMinimumRowNumberWidth(void)
     }
     NSInteger rowNumberIndex = [_trackTable.tableColumns indexOfObject:rowNumber];
     if (rowNumberIndex != 0) [_trackTable moveColumn:rowNumberIndex toColumn:0];
+    if (![defaults boolForKey:MusicLibraryReferenceColumnOrderMigration]) {
+        [self _resetTrackColumnsToReferenceOrder];
+        [defaults setBool:YES forKey:MusicLibraryReferenceColumnOrderMigration];
+    }
     NSScrollView *playlists = [self _scrollViewForTable:_playlistTable];
     NSScrollView *tracks = [self _scrollViewForTable:_trackTable];
     playlists.translatesAutoresizingMaskIntoConstraints = NO;
@@ -225,7 +233,40 @@ static CGFloat MusicLibraryMinimumRowNumberWidth(void)
         item.action = @selector(_toggleColumn:);
         item.enabled = ![definition[@"key"] isEqual:@"title"];
     }
+    [_columnsButton.menu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *reset = [[NSMenuItem alloc] initWithTitle:@"Reset Columns"
+        action:@selector(_resetColumns:) keyEquivalent:@""];
+    reset.target = self;
+    [_columnsButton.menu addItem:reset];
     [self _updateColumnsMenu];
+}
+
+- (void) _resetTrackColumnsToReferenceOrder
+{
+    NSTableColumn *rowNumber = [_trackTable tableColumnWithIdentifier:MusicLibraryRowNumberColumn];
+    rowNumber.width = MusicLibraryCompactRowNumberWidth();
+    NSInteger rowNumberIndex = [_trackTable.tableColumns indexOfObject:rowNumber];
+    if (rowNumberIndex != 0) [_trackTable moveColumn:rowNumberIndex toColumn:0];
+
+    NSMutableArray<NSString *> *visible = [NSMutableArray array];
+    NSInteger destination = 1;
+    for (NSDictionary *definition in [MusicLibrarySnapshot columns]) {
+        NSTableColumn *column = [_trackTable tableColumnWithIdentifier:definition[@"key"]];
+        if (!column) continue;
+        NSInteger current = [_trackTable.tableColumns indexOfObject:column];
+        if (current != destination) [_trackTable moveColumn:current toColumn:destination];
+        column.width = [definition[@"width"] doubleValue];
+        column.hidden = ![definition[@"visible"] boolValue];
+        if (!column.hidden) [visible addObject:column.identifier];
+        destination++;
+    }
+    [[NSUserDefaults standardUserDefaults] setObject:visible forKey:@"MusicLibrary.visibleColumns"];
+    [self _updateColumnsMenu];
+}
+
+- (void) _resetColumns:(id)sender
+{
+    [self _resetTrackColumnsToReferenceOrder];
 }
 
 - (void) _buildWindow

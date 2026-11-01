@@ -100,6 +100,13 @@ static void TestSnapshot(MusicLibrarySnapshot *snapshot)
     Check(malformed.isComplete, @"Malformed rows do not invalidate a complete root");
     Check(![[MusicLibrarySnapshot alloc] initWithDictionary:@{}].isComplete, @"Incomplete root identified");
     Check([MusicLibrarySnapshot columns].count == 33, @"Metadata column contract");
+    NSArray *referenceKeys = @[@"title", @"comments", @"duration", @"bitrate", @"artist", @"genre", @"rating"];
+    NSArray *definitions = [MusicLibrarySnapshot columns];
+    for (NSUInteger index = 0; index < referenceKeys.count; index++) {
+        Check([definitions[index][@"key"] isEqual:referenceKeys[index]] &&
+              [definitions[index][@"visible"] boolValue],
+              @"Reference Music Library columns are ordered and visible by default");
+    }
 }
 
 static void TestBackups(MusicLibrarySnapshot *snapshot)
@@ -236,6 +243,13 @@ static void TestWindow(MusicLibraryController *controller, MusicLibrarySnapshot 
     NSTableColumn *rowNumberColumn = tracks.tableColumns.firstObject;
     Check([rowNumberColumn.identifier isEqual:@"visibleRowNumber"] && [rowNumberColumn.title isEqual:@"#"],
           @"Visible row number is the first track column");
+    Check(tracks.allowsColumnReordering, @"Music Library headers allow user column reordering");
+    NSArray *referenceOrder = @[@"visibleRowNumber", @"title", @"comments", @"duration", @"bitrate", @"artist", @"genre", @"rating"];
+    for (NSUInteger index = 0; index < referenceOrder.count; index++) {
+        Check([tracks.tableColumns[index].identifier isEqual:referenceOrder[index]] &&
+              !tracks.tableColumns[index].hidden,
+              @"Reference Music Library column order is applied to the real table");
+    }
     CGFloat digitTextWidth = ceil([@"999" sizeWithAttributes:@{NSFontAttributeName:[NSFont systemFontOfSize:12]}].width);
     CGFloat threeDigitWidth = digitTextWidth + 2;
     Check(rowNumberColumn.width == threeDigitWidth && rowNumberColumn.width < 36,
