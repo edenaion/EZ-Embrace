@@ -310,45 +310,11 @@ int main(void)
             [(id)NSClassFromString(@"TrackColorPanelController") sharedController];
         [colorController showForTrack:appearanceTrack];
         NSColorPanel *colorPanel = NSColorPanel.sharedColorPanel;
-        NSButton *saveCurrent;
-        NSButton *clearSelected;
-        NSButton *firstSwatch;
-        for (NSView *view in colorPanel.accessoryView.subviews) {
-            if (![view isKindOfClass:NSButton.class]) continue;
-            NSButton *button = (NSButton *)view;
-            if ([button.title isEqual:@"Save Current Color"]) saveCurrent = button;
-            else if ([button.title isEqual:@"Clear Selected"]) clearSelected = button;
-            else if (!button.title.length && button.tag == 0) firstSwatch = button;
-        }
-        Check(saveCurrent && clearSelected && firstSwatch,
-            @"row color panel exposes saved-color slots with explicit save and clear controls");
-        colorPanel.color = NSColor.systemPurpleColor;
-        [saveCurrent performClick:nil];
-        [colorPanel close];
-        sTrackColorOverride = nil;
-        [colorController showForTrack:appearanceTrack];
-        for (NSView *view in colorPanel.accessoryView.subviews) {
-            if ([view isKindOfClass:NSButton.class] && ![(NSButton *)view title].length &&
-                [(NSButton *)view tag] == 0) {
-                firstSwatch = (NSButton *)view;
-                break;
-            }
-        }
-        [firstSwatch performClick:nil];
-        NSColor *appliedSwatch = [sTrackColorOverride colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
-        NSColor *expectedSwatch = [NSColor.systemPurpleColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
-        Check(appliedSwatch && fabs(appliedSwatch.redComponent - expectedSwatch.redComponent) < 0.01 &&
-              fabs(appliedSwatch.blueComponent - expectedSwatch.blueComponent) < 0.01,
-            @"saved swatch survives panel close and applies when clicked");
-        for (NSView *view in colorPanel.accessoryView.subviews) {
-            if ([view isKindOfClass:NSButton.class] && [[(NSButton *)view title] isEqual:@"Clear Selected"]) {
-                clearSelected = (NSButton *)view;
-                break;
-            }
-        }
-        [clearSelected performClick:nil];
-        Check(![NSUserDefaults.standardUserDefaults dictionaryForKey:@"trackRowColorSwatches.v1"][@"0"],
-            @"Clear Selected removes the persisted saved color");
+        NSArray<NSView *> *accessorySubviews = colorPanel.accessoryView.subviews;
+        Check(accessorySubviews.count == 1 &&
+              [accessorySubviews.firstObject isKindOfClass:NSButton.class] &&
+              [[(NSButton *)accessorySubviews.firstObject title] isEqual:@"Reset Row Color"],
+            @"row color panel adds no duplicate swatch UI above the native favorite-swatches grid");
         [colorPanel close];
         sTrackColorOverride = nil;
         appearanceTrack.trackStatus = TrackStatusPlayed;
