@@ -16,17 +16,169 @@
 #import "MaskView.h"
 #import "InterfaceAppearance.h"
 #import "TrackCueController.h"
+#import "SetlistController.h"
+#import "TracksController.h"
 
 @interface TrackColorPanelController : NSObject
 + (instancetype) sharedController;
 - (void) showForTrack:(Track *)track;
+- (NSColor *) savedColorAtSwatchIndex:(NSInteger)index;
+- (void) saveColor:(NSColor *)color atSwatchIndex:(NSInteger)index;
+- (void) applySavedColor:(NSColor *)color;
+@end
+
+
+@interface TrackColorSwatchOverlayView : NSView
+- (instancetype) initWithCollectionView:(NSCollectionView *)collectionView
+                             controller:(TrackColorPanelController *)controller;
+@end
+
+
+@implementation TrackColorSwatchOverlayView {
+    __weak NSCollectionView *_collectionView;
+    __weak TrackColorPanelController *_controller;
+    NSArray<NSButton *> *_swatchButtons;
+}
+
+- (instancetype) initWithCollectionView:(NSCollectionView *)collectionView
+                             controller:(TrackColorPanelController *)controller
+{
+    self = [super initWithFrame:NSZeroRect];
+    if (self) {
+        _collectionView = collectionView;
+        _controller = controller;
+        NSMutableArray<NSButton *> *buttons = [NSMutableArray arrayWithCapacity:30];
+        for (NSInteger index = 0; index < 30; index++) {
+            NSButton *button = [NSButton buttonWithTitle:@"" target:self action:@selector(_swatchClicked:)];
+            button.tag = index;
+            button.bordered = NO;
+            button.accessibilityLabel = [NSString stringWithFormat:NSLocalizedString(@"Saved color %ld", nil),
+                (long)(index + 1)];
+            [self addSubview:button];
+            [buttons addObject:button];
+        }
+        _swatchButtons = buttons;
+    }
+    return self;
+}
+
+- (BOOL) isOpaque
+{
+    return NO;
+}
+
+- (void) layout
+{
+    [super layout];
+    NSArray<NSValue *> *rects = [self _slotRects];
+    [_swatchButtons enumerateObjectsUsingBlock:^(NSButton *button, NSUInteger index, BOOL *stop) {
+        button.hidden = index >= rects.count;
+        if (!button.hidden) button.frame = rects[index].rectValue;
+    }];
+}
+
+- (NSArray<NSValue *> *) _slotRects
+{
+    [_collectionView layoutSubtreeIfNeeded];
+    NSMutableArray<NSValue *> *result = [NSMutableArray array];
+    NSInteger count = [_collectionView numberOfItemsInSection:0];
+    NSCollectionViewLayout *layout = _collectionView.collectionViewLayout;
+    for (NSInteger index = 0; index < count; index++) {
+        NSIndexPath *path = [NSIndexPath indexPathForItem:index inSection:0];
+        NSCollectionViewLayoutAttributes *attributes = [layout layoutAttributesForItemAtIndexPath:path];
+        if (!attributes) continue;
+        NSRect rect = [self convertRect:attributes.frame fromView:_collectionView];
+        [result addObject:[NSValue valueWithRect:rect]];
+    }
+
+    if (result.count == 0) {
+        for (NSView *subview in _collectionView.subviews) {
+            NSRect frame = subview.frame;
+            if (NSWidth(frame) < 8 || NSWidth(frame) > 30 || NSHeight(frame) < 8 || NSHeight(frame) > 30) {
+                continue;
+            }
+            [result addObject:[NSValue valueWithRect:[self convertRect:frame fromView:_collectionView]]];
+        }
+        [result sortUsingComparator:^NSComparisonResult(NSValue *left, NSValue *right) {
+            NSRect leftRect = left.rectValue;
+            NSRect rightRect = right.rectValue;
+            CGFloat rowDifference = NSMidY(leftRect) - NSMidY(rightRect);
+            if (fabs(rowDifference) > 1) return rowDifference > 0 ? NSOrderedAscending : NSOrderedDescending;
+            if (NSMinX(leftRect) < NSMinX(rightRect)) return NSOrderedAscending;
+            if (NSMinX(leftRect) > NSMinX(rightRect)) return NSOrderedDescending;
+            return NSOrderedSame;
+        }];
+    }
+
+    if (result.count == 0) {
+        CGFloat width = floor((NSWidth(self.bounds) - 36) / 10.0);
+        CGFloat height = floor((NSHeight(self.bounds) - 8) / 3.0);
+        for (NSInteger row = 0; row < 3; row++) {
+            for (NSInteger column = 0; column < 10; column++) {
+                NSRect rect = NSMakeRect(column * (width + 4),
+                    NSHeight(self.bounds) - (row + 1) * height - row * 4,
+                    width, height);
+                [result addObject:[NSValue valueWithRect:rect]];
+            }
+        }
+    }
+    return result;
+}
+
+- (void) drawRect:(NSRect)dirtyRect
+{
+    [super drawRect:dirtyRect];
+    [[self _slotRects] enumerateObjectsUsingBlock:^(NSValue *value, NSUInteger index, BOOL *stop) {
+        NSColor *color = [self->_controller savedColorAtSwatchIndex:index];
+        if (!color) return;
+        NSRect rect = NSInsetRect(value.rectValue, 2, 2);
+        NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:rect xRadius:3 yRadius:3];
+        [color setFill];
+        [path fill];
+        [NSColor.separatorColor setStroke];
+        path.lineWidth = 1;
+        [path stroke];
+    }];
+}
+
+- (void) mouseDown:(NSEvent *)event
+{
+    NSPoint location = [self convertPoint:event.locationInWindow fromView:nil];
+    NSArray<NSValue *> *rects = [self _slotRects];
+    NSUInteger index = [rects indexOfObjectPassingTest:^BOOL(NSValue *value, NSUInteger idx, BOOL *stop) {
+        return NSPointInRect(location, value.rectValue);
+    }];
+    if (index == NSNotFound) return;
+
+    [self _activateSwatchAtIndex:index modifierFlags:event.modifierFlags];
+}
+
+- (void) _activateSwatchAtIndex:(NSUInteger)index modifierFlags:(NSEventModifierFlags)modifierFlags
+{
+    NSColor *savedColor = [_controller savedColorAtSwatchIndex:index];
+    if (savedColor && !(modifierFlags & NSEventModifierFlagOption)) {
+        [_controller applySavedColor:savedColor];
+    } else {
+        [_controller saveColor:NSColorPanel.sharedColorPanel.color atSwatchIndex:index];
+    }
+    self.needsDisplay = YES;
+}
+
+- (void) _swatchClicked:(NSButton *)sender
+{
+    [self _activateSwatchAtIndex:sender.tag modifierFlags:NSApp.currentEvent.modifierFlags];
+}
+
 @end
 
 
 @implementation TrackColorPanelController {
     Track *_track;
     NSButton *_automaticButton;
+    TrackColorSwatchOverlayView *_swatchOverlay;
 }
+
+static NSString * const sRowColorSwatchesKey = @"rowColorSwatches";
 
 + (instancetype) sharedController
 {
@@ -78,6 +230,66 @@
     [panel setFrameOrigin:NSMakePoint(round(x), round(y))];
 }
 
+- (NSCollectionView *) _favoriteSwatchCollectionInView:(NSView *)view
+{
+    if ([view isKindOfClass:NSCollectionView.class]) {
+        NSCollectionView *collectionView = (NSCollectionView *)view;
+        NSRect frame = collectionView.frame;
+        if (NSWidth(frame) >= 150 && NSHeight(frame) >= 30 && NSHeight(frame) <= 100) {
+            return collectionView;
+        }
+    }
+    for (NSView *subview in view.subviews) {
+        NSCollectionView *result = [self _favoriteSwatchCollectionInView:subview];
+        if (result) return result;
+    }
+    return nil;
+}
+
+- (void) _installSwatchOverlayInPanel:(NSColorPanel *)panel
+{
+    [_swatchOverlay removeFromSuperview];
+    _swatchOverlay = nil;
+    [panel.contentView layoutSubtreeIfNeeded];
+    NSCollectionView *collectionView = [self _favoriteSwatchCollectionInView:panel.contentView];
+    if (!collectionView) return;
+    _swatchOverlay = [[TrackColorSwatchOverlayView alloc] initWithCollectionView:collectionView
+                                                                      controller:self];
+    _swatchOverlay.frame = [panel.contentView convertRect:collectionView.bounds fromView:collectionView];
+    [panel.contentView addSubview:_swatchOverlay positioned:NSWindowAbove relativeTo:nil];
+}
+
+- (NSColor *) savedColorAtSwatchIndex:(NSInteger)index
+{
+    NSDictionary *colors = [NSUserDefaults.standardUserDefaults dictionaryForKey:sRowColorSwatchesKey];
+    NSArray *components = colors[[NSString stringWithFormat:@"%ld", (long)index]];
+    if (![components isKindOfClass:NSArray.class] || components.count != 3) return nil;
+    return [NSColor colorWithSRGBRed:[components[0] doubleValue]
+                              green:[components[1] doubleValue]
+                               blue:[components[2] doubleValue]
+                              alpha:1];
+}
+
+- (void) saveColor:(NSColor *)color atSwatchIndex:(NSInteger)index
+{
+    NSColor *rgb = [color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    if (!rgb) return;
+    NSMutableDictionary *colors = [[NSUserDefaults.standardUserDefaults
+        dictionaryForKey:sRowColorSwatchesKey] mutableCopy] ?: [NSMutableDictionary dictionary];
+    colors[[NSString stringWithFormat:@"%ld", (long)index]] =
+        @[ @(rgb.redComponent), @(rgb.greenComponent), @(rgb.blueComponent) ];
+    [NSUserDefaults.standardUserDefaults setObject:colors forKey:sRowColorSwatchesKey];
+    [self applySavedColor:rgb];
+    _swatchOverlay.needsDisplay = YES;
+}
+
+- (void) applySavedColor:(NSColor *)color
+{
+    NSColorPanel *panel = NSColorPanel.sharedColorPanel;
+    panel.color = color;
+    [self _colorChanged:panel];
+}
+
 - (void) showForTrack:(Track *)track
 {
     if (!track) return;
@@ -101,6 +313,7 @@
     panel.title = [NSString stringWithFormat:NSLocalizedString(@"Row Color: %@", nil), track.title ?: @""];
     [self _positionPanel:panel nearMouseLocation:NSEvent.mouseLocation];
     [panel makeKeyAndOrderFront:nil];
+    [self _installSwatchOverlayInPanel:panel];
 }
 
 - (void) _colorPanelWillClose:(NSNotification *)notification
@@ -109,19 +322,31 @@
     panel.target = nil;
     panel.action = NULL;
     panel.accessoryView = nil;
+    [_swatchOverlay removeFromSuperview];
+    _swatchOverlay = nil;
     _automaticButton = nil;
     _track = nil;
 }
 
 - (void) _colorChanged:(NSColorPanel *)panel
 {
-    _track.setListColorOverride = panel.color;
+    TracksController *tracksController = GetAppDelegate().setlistController.tracksController;
+    if (tracksController) {
+        [tracksController setRowColorOverride:panel.color forTrack:_track];
+    } else {
+        _track.setListColorOverride = panel.color;
+    }
     _automaticButton.enabled = YES;
 }
 
 - (void) _useAutomaticColor:(id)sender
 {
-    _track.setListColorOverride = nil;
+    TracksController *tracksController = GetAppDelegate().setlistController.tracksController;
+    if (tracksController) {
+        [tracksController setRowColorOverride:nil forTrack:_track];
+    } else {
+        _track.setListColorOverride = nil;
+    }
     _automaticButton.enabled = NO;
 }
 
@@ -288,7 +513,7 @@
     _colorButton.bordered = NO;
     _colorButton.title = @"";
     _colorButton.imagePosition = NSImageOnly;
-    _colorButton.image = [NSImage imageWithSystemSymbolName:@"circle.fill"
+    _colorButton.image = [NSImage imageWithSystemSymbolName:@"circle"
                                   accessibilityDescription:NSLocalizedString(@"Choose track color", nil)];
     _colorButton.target = self;
     _colorButton.action = @selector(_colorButtonClicked:);
@@ -572,8 +797,17 @@
 {
     Track *track = self.track;
     _colorButton.hidden = !track;
-    _colorButton.contentTintColor = track.setListColorOverride ?: NSColor.secondaryLabelColor;
-    NSString *state = track.setListColorOverride ? NSLocalizedString(@"Custom color set.", nil) :
+    NSColor *override = track.setListColorOverride;
+    NSString *symbol = override ? @"circle.fill" : @"circle";
+    NSString *symbolDescription = override ? NSLocalizedString(@"Custom track color", nil) :
+        NSLocalizedString(@"Automatic track color", nil);
+    _colorButton.image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:symbolDescription];
+    NSColor *rgb = [override colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    CGFloat luminance = rgb ? 0.2126 * rgb.redComponent + 0.7152 * rgb.greenComponent +
+        0.0722 * rgb.blueComponent : 1;
+    _colorButton.contentTintColor = override ?
+        (luminance > 0.52 ? NSColor.blackColor : NSColor.whiteColor) : NSColor.secondaryLabelColor;
+    NSString *state = override ? NSLocalizedString(@"Custom color set.", nil) :
         NSLocalizedString(@"Automatic color.", nil);
     NSString *label = [NSString stringWithFormat:NSLocalizedString(@"Color for %@. %@", nil),
         track.title ?: @"", state];
@@ -839,7 +1073,7 @@
     if ([rowView isKindOfClass:[TrackTableRowView class]]) {
         TrackTableRowView *trackRow = (TrackTableRowView *)rowView;
         [trackRow setPlaying:trackStatus == TrackStatusPlaying && [[Preferences sharedInstance] showsPlayingStatus]];
-        trackRow.trackColorOverride = trackStatus == TrackStatusQueued ? self.track.setListColorOverride : nil;
+        trackRow.trackColorOverride = self.track.setListColorOverride;
         trackRow.highlightsUpcomingOtherGenre = trackStatus == TrackStatusQueued &&
             TrackGenreUsesUpcomingHighlightWithOverride(
                 self.track.genre, self.track.genreHighlightOverride);
@@ -864,22 +1098,21 @@
         secondaryColor = [NSColor colorNamed:@"SetlistSecondary"];
     }
     
-    if (rowIsSelected && rowIsEmphasized) {
+    if (drawsTrackColorOverride || drawsOtherGenreHighlight) {
+        NSColor *background = drawsTrackColorOverride ? self.track.setListColorOverride :
+            [[Preferences sharedInstance] upcomingOtherGenreColor];
+        NSColor *rgb = [background colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+        CGFloat luminance = rgb ? 0.2126 * rgb.redComponent + 0.7152 * rgb.greenComponent +
+            0.0722 * rgb.blueComponent : 1;
+        primaryColor = luminance > 0.52 ? NSColor.blackColor : NSColor.whiteColor;
+        secondaryColor = primaryColor;
+
+    } else if (rowIsSelected && rowIsEmphasized) {
         primaryColor   = [NSColor colorNamed:@"SetlistPrimaryEmphasized"];
         secondaryColor = [NSColor colorNamed:@"SetlistSecondaryEmphasized"];
 
     } else if ((trackStatus == TrackStatusPreparing) || (trackStatus == TrackStatusPlaying)) {
         primaryColor   = TrackTableViewGetPlayingTextColor();
-        secondaryColor = primaryColor;
-
-    } else if (drawsTrackColorOverride || drawsOtherGenreHighlight) {
-        NSColor *background = drawsTrackColorOverride ? self.track.setListColorOverride :
-            [[Preferences sharedInstance] upcomingOtherGenreColor];
-        NSColor *rgb = [background
-            colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
-        CGFloat luminance = rgb ? 0.2126 * rgb.redComponent + 0.7152 * rgb.greenComponent +
-            0.0722 * rgb.blueComponent : 1;
-        primaryColor = luminance > 0.52 ? NSColor.blackColor : NSColor.whiteColor;
         secondaryColor = primaryColor;
     }
    
@@ -915,10 +1148,10 @@
     NSVisualEffectMaterial material = 0;
     NSColor *color = nil;
 
-    if (rowIsSelected) {
-        color = TrackTableViewGetRowHighlightColor(rowIsEmphasized);
-    } else if (drawsTrackColorOverride) {
+    if (drawsTrackColorOverride) {
         color = self.track.setListColorOverride;
+    } else if (rowIsSelected) {
+        color = TrackTableViewGetRowHighlightColor(rowIsEmphasized);
     } else if (drawsOtherGenreHighlight) {
         color = [[Preferences sharedInstance] upcomingOtherGenreColor];
     } else {

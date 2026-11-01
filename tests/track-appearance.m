@@ -19,6 +19,8 @@
 @interface TrackColorPanelTestController : NSObject
 + (instancetype)sharedController;
 - (void)showForTrack:(Track *)track;
+- (NSColor *)savedColorAtSwatchIndex:(NSInteger)index;
+- (void)saveColor:(NSColor *)color atSwatchIndex:(NSInteger)index;
 @end
 
 // Exercise production cell refreshes without audio, library access or user defaults.
@@ -112,6 +114,10 @@ NSArray<NSDictionary<NSString *, id> *> *AuditionOutputDevices(void) { return @[
 @interface TrackTableView (AppearanceTests)
 - (void) _dispatchHeightUpdate;
 - (void) _updateDrag;
+@end
+
+@interface TrackTableCellView (AppearanceTests)
+- (void)_updateColorButton;
 @end
 
 @interface HeightProbeTable : TrackTableView
@@ -315,6 +321,15 @@ int main(void)
               [accessorySubviews.firstObject isKindOfClass:NSButton.class] &&
               [[(NSButton *)accessorySubviews.firstObject title] isEqual:@"Reset Row Color"],
             @"row color panel adds no duplicate swatch UI above the native favorite-swatches grid");
+        NSColor *savedSwatch = [NSColor colorWithSRGBRed:0.12 green:0.34 blue:0.56 alpha:1];
+        [colorController saveColor:savedSwatch atSwatchIndex:19];
+        NSColor *reloadedSwatch = [[colorController savedColorAtSwatchIndex:19]
+            colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+        Check(fabs(reloadedSwatch.redComponent - 0.12) < 0.001 &&
+              fabs(reloadedSwatch.greenComponent - 0.34) < 0.001 &&
+              fabs(reloadedSwatch.blueComponent - 0.56) < 0.001,
+            @"native favorite-swatches overlay persists saved colors");
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"rowColorSwatches"];
         [colorPanel close];
         sTrackColorOverride = nil;
         appearanceTrack.trackStatus = TrackStatusPlayed;
@@ -357,10 +372,24 @@ int main(void)
         Check(genreRow.drawsTrackColorOverride && !genreRow.drawsUpcomingOtherGenreHighlight,
             @"per-track cosmetic color overrides automatic mint without changing classification");
         genreRow.selected = YES;
-        Check(!genreRow.drawsTrackColorOverride,
-            @"selection remains visible over a per-track cosmetic color");
+        Check(genreRow.drawsTrackColorOverride,
+            @"selected rows retain their per-track cosmetic background");
+        sTrackStatus = TrackStatusPlayed;
+        [cell updateColors];
+        Check(genreRow.drawsTrackColorOverride && [genreRow.trackColorOverride isEqual:sTrackColorOverride],
+            @"played rows retain their explicit cosmetic background");
+        NSButton *colorButton = [NSButton new];
+        [cell setValue:colorButton forKey:@"colorButton"];
+        [cell _updateColorButton];
+        Check([colorButton.image.accessibilityDescription isEqual:@"Custom track color"],
+            @"filled circle identifies an active row color");
+        Check([colorButton.contentTintColor isEqual:NSColor.blackColor],
+            @"filled circle contrasts against a light custom row color");
         genreRow.selected = NO;
         sTrackColorOverride = nil;
+        [cell _updateColorButton];
+        Check([colorButton.image.accessibilityDescription isEqual:@"Automatic track color"],
+            @"outline circle identifies automatic row color");
         [window.contentView addSubview:cell];
         cell.testTrack = nil;
         preferences.textContrastPercent = 0;

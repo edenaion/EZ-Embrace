@@ -44,7 +44,7 @@
 
 - (BOOL) drawsTrackColorOverride
 {
-    return _trackColorOverride && !self.isSelected;
+    return _trackColorOverride != nil;
 }
 
 - (void) drawBackgroundInRect:(NSRect)dirtyRect
@@ -76,6 +76,17 @@
 
 - (void) drawSelectionInRect:(NSRect)dirtyRect
 {
+    if (_trackColorOverride) {
+        [_trackColorOverride set];
+        NSRectFillUsingOperation(self.bounds, NSCompositingOperationSourceOver);
+        [[[NSColor controlAccentColor] colorWithAlphaComponent:0.20] set];
+        NSRectFillUsingOperation(self.bounds, NSCompositingOperationSourceOver);
+        [[NSColor controlAccentColor] set];
+        NSRect stripe = self.bounds;
+        stripe.size.width = 4;
+        NSRectFillUsingOperation(stripe, NSCompositingOperationSourceOver);
+        return;
+    }
     BOOL emphasized = ([self interiorBackgroundStyle] == NSBackgroundStyleEmphasized);
 
     [TrackTableViewGetRowHighlightColor(emphasized) set];

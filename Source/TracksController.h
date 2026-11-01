@@ -8,7 +8,7 @@ extern NSString * const TracksControllerDidModifyTracksNotificationName;
 extern NSString *EmbraceLockedTrackPasteboardType;
 extern NSString *EmbraceQueuedTrackPasteboardType;
 
-@class Track, TrackTableView;
+@class NSColor, Track, TrackTableView;
 
 @interface TracksController : NSObject <NSTableViewDelegate, NSTableViewDataSource>
 
@@ -35,6 +35,7 @@ extern NSString *EmbraceQueuedTrackPasteboardType;
 - (void) useAutomaticSongType:(id)sender;
 - (void) markAsTraditionalSong:(id)sender;
 - (void) markAsModernSong:(id)sender;
+- (void) setRowColorOverride:(NSColor *)color forTrack:(Track *)track;
 
 - (void) detectDuplicates;
 

@@ -1229,6 +1229,18 @@ static BOOL sNormalizeInternalDropTarget(NSInteger *row,
 }
 
 
+- (void) setRowColorOverride:(NSColor *)color forTrack:(Track *)sourceTrack
+{
+    if (!sourceTrack) return;
+    for (Track *track in _tracks) {
+        if (track == sourceTrack || [track isSameLibrarySongAsTrack:sourceTrack]) {
+            track.setListColorOverride = color;
+        }
+    }
+    [self.tableView reloadData];
+}
+
+
 - (void) useAutomaticSongType:(id)sender
 {
     EmbraceLogMethod();
