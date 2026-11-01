@@ -3,9 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-version="4.4.1"
+version="4.5.0"
 label="${RELEASE_LABEL:-$(date +%y%m%d-%H%M%S)}"
-output="${OUTPUT_DIR:-builds/v4.4.1/mac/release-${label}}"
+output="${OUTPUT_DIR:-builds/v4.5.0/mac/release-${label}}"
 derived="$output/derived"
 app="$output/EZ-Embrace.app"
 package="$output/EZ-Embrace-${version}.pkg"
@@ -23,8 +23,8 @@ fi
 output_parent=$(dirname "$output")
 mkdir -p "$output_parent"
 available_kib=$(df -k "$output_parent" | awk 'END {print $4}')
-# Allow 2 GiB for a universal build and packaging, then preserve the 10 GiB reserve.
-if (( available_kib < 12 * 1024 * 1024 )); then
+# Recent universal release directories use about 350 MiB. Allow 512 MiB, then preserve 10 GiB.
+if (( available_kib < 10 * 1024 * 1024 + 512 * 1024 )); then
     echo 'Insufficient free space for the release build and 10 GiB reserve.' >&2
     exit 1
 fi

@@ -1501,7 +1501,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 556EAEE21FEA013000EF68C3 /* Embrace_Debug.xcconfig */;
 			buildSettings = {
-				MARKETING_VERSION = 4.4.1;
+				MARKETING_VERSION = 4.5.0;
 			};
 			name = Debug;
 		};
@@ -1509,7 +1509,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 556EAEE31FEA013000EF68C3 /* Embrace_Profile.xcconfig */;
 			buildSettings = {
-				MARKETING_VERSION = 4.4.1;
+				MARKETING_VERSION = 4.5.0;
 			};
 			name = Profile;
 		};
@@ -1523,7 +1523,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 556EAEE11FEA013000EF68C3 /* Embrace_Release.xcconfig */;
 			buildSettings = {
-				MARKETING_VERSION = 4.4.1;
+				MARKETING_VERSION = 4.5.0;
 			};
 			name = Release;
 		};
@@ -1537,7 +1537,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 556EAEE01FEA013000EF68C3 /* Embrace_Submission.xcconfig */;
 			buildSettings = {
-				MARKETING_VERSION = 4.4.1;
+				MARKETING_VERSION = 4.5.0;
 			};
 			name = Submission;
 		};
