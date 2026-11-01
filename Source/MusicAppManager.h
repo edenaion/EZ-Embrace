@@ -47,6 +47,7 @@ extern NSString * const MusicAppManagerDidUpdateBrowserNotification;
 @interface MusicAppLibraryMetadata : NSObject
 @property (nonatomic) NSTimeInterval startTime;
 @property (nonatomic) NSTimeInterval stopTime;
+@property (nonatomic, copy) NSString *genre;
 @end
 
 
@@ -57,5 +58,6 @@ extern NSString * const MusicAppManagerDidUpdateBrowserNotification;
 @property (nonatomic, copy) NSString *location;
 @property (nonatomic, copy) NSString *title;
 @property (nonatomic, copy) NSString *artist;
+@property (nonatomic, copy) NSString *genre;
 @property (nonatomic) NSTimeInterval duration;
 @end

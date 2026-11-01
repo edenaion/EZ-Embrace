@@ -180,15 +180,13 @@ static NSDictionary *sReadLoudness(NSURL *internalURL)
             NSUInteger startTime = [mediaItem startTime];
             NSUInteger stopTime  = [mediaItem stopTime];
 
-            if (startTime || stopTime) {
-                NSMutableDictionary *trackData = [NSMutableDictionary dictionaryWithCapacity:2];
-                
-                if (startTime) [trackData setObject:@(startTime / 1000.0) forKey:TrackKeyStartTime];
-                if (stopTime)  [trackData setObject:@(stopTime  / 1000.0) forKey:TrackKeyStopTime];
-                
-                NSString *location = [[mediaItem location] path];
-                if (location) [result setObject:trackData forKey:location];
-            }
+            NSMutableDictionary *trackData = [NSMutableDictionary dictionaryWithCapacity:3];
+            if (startTime) [trackData setObject:@(startTime / 1000.0) forKey:TrackKeyStartTime];
+            if (stopTime)  [trackData setObject:@(stopTime  / 1000.0) forKey:TrackKeyStopTime];
+            [trackData setObject:[mediaItem genre] ?: @"" forKey:TrackKeyGenre];
+
+            NSString *location = [[mediaItem location] path];
+            if (location) [result setObject:trackData forKey:location];
         }
 
         dispatch_async(dispatch_get_main_queue(), ^{

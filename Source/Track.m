@@ -63,6 +63,7 @@ static NSString * const sGenreHighlightOverrideKey = @"genreHighlightOverride";
     BOOL            _cleared;
     BOOL            _priorityAnalysisRequested;
     BOOL            _updatingState;
+    BOOL            _observesLibraryMetadata;
 }
 
 @dynamic playDuration, silenceAtStart, silenceAtEnd, tonality;
@@ -725,6 +726,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
             [strongSelf _updateState:dictionary initialLoad:NO];
             
             if (command == WorkerTrackCommandReadMetadata) {
+                [strongSelf _readMetadataViaManagerWithFileURL:[strongSelf externalURL]];
                 [[ScriptsManager sharedInstance] callMetadataAvailableWithTrack:strongSelf];
             }
         });
@@ -743,6 +745,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     if (pasteboardMetadata) {
         NSString      *title      = [pasteboardMetadata title];
         NSString      *artist     = [pasteboardMetadata artist];
+        NSString      *genre      = [pasteboardMetadata genre];
         NSTimeInterval duration   = [pasteboardMetadata duration];
         NSInteger      databaseID = [pasteboardMetadata databaseID];
 
@@ -752,6 +755,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
         if (!_artist)     [self setArtist:artist];
         if (!_duration)   [self setDuration:duration];
         if (!_databaseID) [self setDatabaseID:databaseID];
+        if (genre)        [self setGenre:genre];
     }
 
     if ([[MusicAppManager sharedInstance] didParseLibrary]) {
@@ -762,27 +766,25 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
         
         EmbraceLog(@"Track", @"%@ has library metadata: startTime=%g, stopTime=%g", self, startTime, stopTime);
         
-        [self setStartTime:startTime];
-        [self setStopTime: stopTime];
-        [self setCueStartTime:_cueStartTime];
+        if (libraryMetadata) {
+            [self setStartTime:startTime];
+            [self setStopTime: stopTime];
+            [self setGenre:libraryMetadata.genre ?: @""];
+            [self setCueStartTime:_cueStartTime];
+        }
     }
     
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_handleDidUpdateLibraryMetadata:) name:MusicAppManagerDidUpdateLibraryMetadataNotification object:nil];
+    if (!_observesLibraryMetadata) {
+        _observesLibraryMetadata = YES;
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_handleDidUpdateLibraryMetadata:)
+            name:MusicAppManagerDidUpdateLibraryMetadataNotification object:nil];
+    }
 }
 
 
 - (void) _handleDidUpdateLibraryMetadata:(NSNotification *)note
 {
-    MusicAppLibraryMetadata *metadata = [[MusicAppManager sharedInstance] libraryMetadataForFileURL:[self externalURL]];
-    
-    NSTimeInterval startTime = [metadata startTime];
-    NSTimeInterval stopTime  = [metadata stopTime];
-    
-    EmbraceLog(@"Track", @"%@ updated startTime=%g, stopTime=%g with %@", self, startTime, stopTime, metadata);
-    
-    [self setStartTime:startTime];
-    [self setStopTime: stopTime];
-    [self setCueStartTime:_cueStartTime];
+    [self _readMetadataViaManagerWithFileURL:[self externalURL]];
 }
 
 
@@ -860,6 +862,17 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     if (_title != title) {
         _title = [title precomposedStringWithCanonicalMapping];
         _titleForSimilarTitleDetection = GetSimplifiedString(title);
+        _dirty = YES;
+        [self _saveStateImmediately:NO];
+    }
+}
+
+
+- (void) setGenre:(NSString *)genre
+{
+    genre = [genre precomposedStringWithCanonicalMapping];
+    if ((_genre != genre) && ![_genre isEqualToString:genre]) {
+        _genre = [genre copy];
         _dirty = YES;
         [self _saveStateImmediately:NO];
     }

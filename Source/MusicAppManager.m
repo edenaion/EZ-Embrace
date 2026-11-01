@@ -166,16 +166,17 @@ static NSString *sGetExpandedPath(NSString *inPath)
                 snapshot = nil;
                 validationMessage = @"Music returned an incomplete library scan. The last known good mirror was preserved.";
             }
-            NSMutableDictionary *trimMetadata = [NSMutableDictionary dictionary];
+            NSMutableDictionary *libraryMetadata = [NSMutableDictionary dictionary];
             for (NSDictionary *track in snapshot.tracks) {
                 NSTimeInterval start = [track[@"startTime"] doubleValue];
                 NSTimeInterval stop = [track[@"stopTime"] doubleValue];
                 NSURL *url = [NSURL URLWithString:track[@"location"]];
-                if ((!start && !stop) || !url.isFileURL) continue;
+                if (!url.isFileURL) continue;
                 MusicAppLibraryMetadata *metadata = [[MusicAppLibraryMetadata alloc] init];
                 metadata.startTime = start;
                 metadata.stopTime = stop;
-                trimMetadata[sGetExpandedPath(url.path)] = metadata;
+                metadata.genre = [track[@"genre"] isKindOfClass:NSString.class] ? track[@"genre"] : @"";
+                libraryMetadata[sGetExpandedPath(url.path)] = metadata;
             }
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (generation != _browserRequestGeneration || !_browserLoading) return;
@@ -184,7 +185,7 @@ static NSString *sGetExpandedPath(NSString *inPath)
                 if (snapshot) {
                     _browserSnapshot = snapshot;
                     _lastLibraryRefreshDate = [NSDate date];
-                    [self _applyTrimMetadata:trimMetadata];
+                    [self _applyLibraryMetadata:libraryMetadata];
                     BOOL forceBackup = _backupRequestedWhenReady;
                     _backupRequestedWhenReady = NO;
                     if (forceBackup || ((Preferences *)[Preferences sharedInstance]).musicLibraryDailySnapshotsEnabled) {
@@ -206,7 +207,7 @@ static NSString *sGetExpandedPath(NSString *inPath)
     });
 }
 
-- (void) _applyTrimMetadata:(NSMutableDictionary *)metadata
+- (void) _applyLibraryMetadata:(NSMutableDictionary *)metadata
 {
     _didParseLibrary = YES;
     if (![_pathToLibraryMetadataMap isEqualToDictionary:metadata]) {
@@ -282,12 +283,14 @@ static NSString *sGetExpandedPath(NSString *inPath)
                     NSDictionary *trackData = [dictionary objectForKey:path];
                     [metadata setStartTime:[[trackData objectForKey:TrackKeyStartTime] doubleValue]];
                     [metadata setStopTime: [[trackData objectForKey:TrackKeyStopTime]  doubleValue]];
+                    id genre = [trackData objectForKey:TrackKeyGenre];
+                    [metadata setGenre:[genre isKindOfClass:NSString.class] ? genre : @""];
 
                     [pathToLibraryMetadataMap setObject:metadata forKey:sGetExpandedPath(path)];
                 }
 
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    [self _applyTrimMetadata:pathToLibraryMetadataMap];
+                    [self _applyLibraryMetadata:pathToLibraryMetadataMap];
                 });
             }];
         }
@@ -362,6 +365,9 @@ static NSString *sGetExpandedPath(NSString *inPath)
         NSString *name = [track objectForKey:@"Name"];
         if (![name isKindOfClass:[NSString class]]) name = nil;
 
+        NSString *genre = [track objectForKey:@"Genre"];
+        if (![genre isKindOfClass:[NSString class]]) genre = nil;
+
         NSString *location = [track objectForKey:@"Location"];
         if (![location isKindOfClass:[NSString class]]) location = nil;
         
@@ -388,6 +394,7 @@ static NSString *sGetExpandedPath(NSString *inPath)
         [metadata setDuration:totalTime];
         [metadata setTitle:name];
         [metadata setArtist:artist];
+        [metadata setGenre:genre];
         [metadata setLocation:sGetExpandedPath(location)];
         [metadata setTrackID:trackID];
         [metadata setDatabaseID:[key integerValue]];
@@ -551,7 +558,8 @@ static NSString *sGetExpandedPath(NSString *inPath)
     MusicAppLibraryMetadata *otherMetadata = (MusicAppLibraryMetadata *)otherObject;
 
     return _startTime == otherMetadata->_startTime &&
-           _stopTime  == otherMetadata->_stopTime;
+           _stopTime  == otherMetadata->_stopTime &&
+           ((_genre == otherMetadata->_genre) || [_genre isEqualToString:otherMetadata->_genre]);
 }
 
 
@@ -560,7 +568,7 @@ static NSString *sGetExpandedPath(NSString *inPath)
     NSUInteger startTime = *(NSUInteger *)&_startTime;
     NSUInteger stopTime  = *(NSUInteger *)&_stopTime;
 
-    return startTime ^ stopTime;
+    return startTime ^ stopTime ^ _genre.hash;
 }
 
 

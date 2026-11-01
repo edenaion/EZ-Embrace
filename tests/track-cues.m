@@ -14,6 +14,10 @@ NSString * const MusicAppManagerDidUpdateLibraryMetadataNotification = @"MusicAp
 @implementation MusicAppLibraryMetadata
 @end
 
+@interface Track (TrackGenreTestPrivate)
+- (void)_readMetadataViaManagerWithFileURL:(NSURL *)fileURL;
+@end
+
 static NSString *sSupportDirectory;
 static AppDelegate *sAppDelegate;
 static NSUInteger sAssertions;
@@ -31,7 +35,7 @@ static NSUInteger sAssertions;
     return result;
 }
 - (MusicAppLibraryMetadata *)libraryMetadataForFileURL:(NSURL *)url { return self.testLibraryMetadata; }
-- (BOOL)didParseLibrary { return NO; }
+- (BOOL)didParseLibrary { return self.testLibraryMetadata != nil; }
 - (MusicAppPasteboardMetadata *)pasteboardMetadataForFileURL:(NSURL *)url { return nil; }
 @end
 
@@ -189,10 +193,23 @@ int main(void)
         MusicAppLibraryMetadata *metadata = [MusicAppLibraryMetadata new];
         metadata.startTime = 20;
         metadata.stopTime = 90;
+        metadata.genre = @"Tango- inst";
         manager.testLibraryMetadata = metadata;
         [[NSNotificationCenter defaultCenter] postNotificationName:MusicAppManagerDidUpdateLibraryMetadataNotification object:manager];
         CheckNear(reloaded.startTime, 20, @"library metadata refresh updates imported trim start");
         CheckNear(reloaded.stopTime, 90, @"library metadata refresh updates imported trim stop");
+        Check([reloaded.genre isEqualToString:@"Tango- inst"],
+            @"library metadata refresh makes Music genre authoritative in Set List");
+        [reloaded setValue:@"Electronic" forKey:@"genre"];
+        [reloaded _readMetadataViaManagerWithFileURL:reloaded.externalURL];
+        Check([reloaded.genre isEqualToString:@"Tango- inst"],
+            @"Music genre wins again after embedded metadata is read");
+        metadata.genre = @"";
+        [[NSNotificationCenter defaultCenter] postNotificationName:MusicAppManagerDidUpdateLibraryMetadataNotification object:manager];
+        Check(reloaded.genre.length == 0,
+            @"an empty Music genre remains authoritative and classifies as nontraditional");
+        metadata.genre = @"Tango- inst";
+        [[NSNotificationCenter defaultCenter] postNotificationName:MusicAppManagerDidUpdateLibraryMetadataNotification object:manager];
         CheckNear(reloaded.cueStartTime, 50, @"metadata refresh preserves absolute cue position");
         CheckNear(reloaded.cueOffset, 30, @"refreshed trim recomputes cue offset");
         CheckNear(reloaded.playDuration, 70, @"refreshed trims update playDuration independently");
