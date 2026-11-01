@@ -18,6 +18,81 @@
 #import "TrackCueController.h"
 
 
+@interface TrackColorPanelController : NSObject
++ (instancetype) sharedController;
+- (void) showForTrack:(Track *)track;
+@end
+
+
+@implementation TrackColorPanelController {
+    Track *_track;
+    NSButton *_automaticButton;
+}
+
++ (instancetype) sharedController
+{
+    static TrackColorPanelController *controller;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ controller = [self new]; });
+    return controller;
+}
+
+- (NSView *) _accessoryView
+{
+    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 210, 36)];
+    _automaticButton = [NSButton buttonWithTitle:NSLocalizedString(@"Use Automatic Color", nil)
+                                           target:self action:@selector(_useAutomaticColor:)];
+    [_automaticButton sizeToFit];
+    _automaticButton.frame = NSMakeRect(floor((210 - NSWidth(_automaticButton.frame)) / 2), 4,
+                                        NSWidth(_automaticButton.frame), NSHeight(_automaticButton.frame));
+    [view addSubview:_automaticButton];
+    return view;
+}
+
+- (void) showForTrack:(Track *)track
+{
+    if (!track) return;
+    _track = track;
+    NSColorPanel *panel = [NSColorPanel sharedColorPanel];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:NSWindowWillCloseNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_colorPanelWillClose:)
+        name:NSWindowWillCloseNotification object:panel];
+    panel.showsAlpha = NO;
+    panel.mode = NSColorPanelModeWheel;
+    panel.target = self;
+    panel.action = @selector(_colorChanged:);
+    panel.accessoryView = [self _accessoryView];
+    panel.color = track.setListColorOverride ?: [[Preferences sharedInstance] upcomingOtherGenreColor];
+    _automaticButton.enabled = track.setListColorOverride != nil;
+    panel.title = [NSString stringWithFormat:NSLocalizedString(@"Track Color: %@", nil), track.title ?: @""];
+    [panel makeKeyAndOrderFront:nil];
+}
+
+- (void) _colorPanelWillClose:(NSNotification *)notification
+{
+    NSColorPanel *panel = notification.object;
+    panel.target = nil;
+    panel.action = NULL;
+    panel.accessoryView = nil;
+    _automaticButton = nil;
+    _track = nil;
+}
+
+- (void) _colorChanged:(NSColorPanel *)panel
+{
+    _track.setListColorOverride = panel.color;
+    _automaticButton.enabled = YES;
+}
+
+- (void) _useAutomaticColor:(id)sender
+{
+    _track.setListColorOverride = nil;
+    _automaticButton.enabled = NO;
+}
+
+@end
+
+
 @interface TrackTableCellView () <ApplicationEventListener>
 
 @property (nonatomic, weak) IBOutlet NSLayoutConstraint *titleDurationConstraint;
@@ -78,6 +153,7 @@
     BOOL            _animatesTime;
     BOOL            _animatesSpeakerImage;
     TrackCueButton *_cueButton;
+    NSButton *_colorButton;
     NSPopover *_cuePopover;
 }
 
@@ -172,17 +248,31 @@
     _cueButton.target = self;
     _cueButton.action = @selector(_cueButtonClicked:);
     [container addSubview:_cueButton];
+    _colorButton = [[NSButton alloc] initWithFrame:NSZeroRect];
+    _colorButton.translatesAutoresizingMaskIntoConstraints = NO;
+    _colorButton.bordered = NO;
+    _colorButton.title = @"";
+    _colorButton.imagePosition = NSImageOnly;
+    _colorButton.image = [NSImage imageWithSystemSymbolName:@"paintpalette.fill"
+                                  accessibilityDescription:NSLocalizedString(@"Choose track color", nil)];
+    _colorButton.target = self;
+    _colorButton.action = @selector(_colorButtonClicked:);
+    [container addSubview:_colorButton];
     for (NSLayoutConstraint *constraint in container.constraints) {
         if (constraint.firstItem == container && constraint.firstAttribute == NSLayoutAttributeRight &&
             constraint.secondItem == _durationField && constraint.secondAttribute == NSLayoutAttributeRight) {
-            constraint.constant += 28;
+            constraint.constant += 54;
         }
     }
     [NSLayoutConstraint activateConstraints:@[
         [_cueButton.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-5],
         [_cueButton.centerYAnchor constraintEqualToAnchor:_durationField.centerYAnchor],
         [_cueButton.widthAnchor constraintEqualToConstant:22],
-        [_cueButton.heightAnchor constraintEqualToConstant:18]
+        [_cueButton.heightAnchor constraintEqualToConstant:18],
+        [_colorButton.trailingAnchor constraintEqualToAnchor:_cueButton.leadingAnchor constant:-2],
+        [_colorButton.centerYAnchor constraintEqualToAnchor:_durationField.centerYAnchor],
+        [_colorButton.widthAnchor constraintEqualToConstant:22],
+        [_colorButton.heightAnchor constraintEqualToConstant:18]
     ]];
     [_errorButton setAutoresizingMask:NSViewMinXMargin];
     [_errorButton setTarget:self];
@@ -361,6 +451,7 @@
         @"grouping",
         @"genre",
         @"genreHighlightOverride",
+        @"setListColorOverride",
         @"beatsPerMinute",
         @"trackStatus",
         @"trackLabel",
@@ -425,6 +516,11 @@
     _cuePopover = [TrackCueController showForTrack:self.track relativeToView:_cueButton];
 }
 
+- (void) _colorButtonClicked:(id)sender
+{
+    [[TrackColorPanelController sharedController] showForTrack:self.track];
+}
+
 - (void) _updateCueButton
 {
     Track *track = self.track;
@@ -435,6 +531,19 @@
     NSString *label = [NSString stringWithFormat:NSLocalizedString(@"Start marker for %@. %@", nil), track.title ?: @"", state];
     _cueButton.accessibilityLabel = label;
     _cueButton.toolTip = label;
+}
+
+- (void) _updateColorButton
+{
+    Track *track = self.track;
+    _colorButton.hidden = !track;
+    _colorButton.contentTintColor = track.setListColorOverride ?: NSColor.secondaryLabelColor;
+    NSString *state = track.setListColorOverride ? NSLocalizedString(@"Custom color set.", nil) :
+        NSLocalizedString(@"Automatic color.", nil);
+    NSString *label = [NSString stringWithFormat:NSLocalizedString(@"Color for %@. %@", nil),
+        track.title ?: @"", state];
+    _colorButton.accessibilityLabel = label;
+    _colorButton.toolTip = label;
 }
 
 
@@ -491,6 +600,7 @@
     [self _updateLabelEdgeAndStripe];
     [self updateColors];
     [self _updateCueButton];
+    [self _updateColorButton];
 
     if ([self track]) {
         [self _updateStatusShape];
@@ -693,12 +803,15 @@
     if ([rowView isKindOfClass:[TrackTableRowView class]]) {
         TrackTableRowView *trackRow = (TrackTableRowView *)rowView;
         [trackRow setPlaying:trackStatus == TrackStatusPlaying && [[Preferences sharedInstance] showsPlayingStatus]];
+        trackRow.trackColorOverride = trackStatus == TrackStatusQueued ? self.track.setListColorOverride : nil;
         trackRow.highlightsUpcomingOtherGenre = trackStatus == TrackStatusQueued &&
             TrackGenreUsesUpcomingHighlightWithOverride(
                 self.track.genre, self.track.genreHighlightOverride);
     }
     BOOL drawsOtherGenreHighlight = [rowView isKindOfClass:TrackTableRowView.class] &&
         [(TrackTableRowView *)rowView drawsUpcomingOtherGenreHighlight];
+    BOOL drawsTrackColorOverride = [rowView isKindOfClass:TrackTableRowView.class] &&
+        [(TrackTableRowView *)rowView drawsTrackColorOverride];
     NSString *status = trackStatus == TrackStatusPlayed ? NSLocalizedString(@"Played", nil) :
         trackStatus == TrackStatusPlaying ? NSLocalizedString(@"Now playing", nil) :
         trackStatus == TrackStatusPreparing ? NSLocalizedString(@"Preparing playback", nil) : NSLocalizedString(@"Up Next", nil);
@@ -723,8 +836,10 @@
         primaryColor   = TrackTableViewGetPlayingTextColor();
         secondaryColor = primaryColor;
 
-    } else if (drawsOtherGenreHighlight) {
-        NSColor *rgb = [[[Preferences sharedInstance] upcomingOtherGenreColor]
+    } else if (drawsTrackColorOverride || drawsOtherGenreHighlight) {
+        NSColor *background = drawsTrackColorOverride ? self.track.setListColorOverride :
+            [[Preferences sharedInstance] upcomingOtherGenreColor];
+        NSColor *rgb = [background
             colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
         CGFloat luminance = rgb ? 0.2126 * rgb.redComponent + 0.7152 * rgb.greenComponent +
             0.0722 * rgb.blueComponent : 1;
@@ -732,7 +847,7 @@
         secondaryColor = primaryColor;
     }
    
-    BOOL appliesContrast = !drawsOtherGenreHighlight &&
+    BOOL appliesContrast = !drawsTrackColorOverride && !drawsOtherGenreHighlight &&
         (trackStatus != TrackStatusPlayed || (rowIsSelected && rowIsEmphasized));
     [InterfaceAppearance setTextColor:primaryColor forField:[self titleField] appliesContrast:appliesContrast];
     [InterfaceAppearance setTextColor:primaryColor forField:[self durationField] appliesContrast:appliesContrast];
@@ -766,6 +881,8 @@
 
     if (rowIsSelected) {
         color = TrackTableViewGetRowHighlightColor(rowIsEmphasized);
+    } else if (drawsTrackColorOverride) {
+        color = self.track.setListColorOverride;
     } else if (drawsOtherGenreHighlight) {
         color = [[Preferences sharedInstance] upcomingOtherGenreColor];
     } else {

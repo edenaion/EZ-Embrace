@@ -8,7 +8,7 @@ extern NSString * const TrackDidModifyTitleNotificationName;
 extern NSString * const TrackDidModifyExternalURLNotificationName;
 extern NSString * const TrackDidModifyDurationNotificationName;
 
-@class TrackAnalyzer;
+@class NSColor, TrackAnalyzer;
 
 typedef NS_ENUM(NSInteger, TrackStatus) {
     TrackStatusQueued    = 0,  // Track is queued
@@ -68,6 +68,7 @@ typedef NS_ENUM(NSInteger, TrackLabel) {
 @property (nonatomic) BOOL stopsAfterPlaying;
 @property (nonatomic) BOOL ignoresAutoGap;
 @property (nonatomic) TrackGenreHighlightOverride genreHighlightOverride;
+@property (nonatomic, copy) NSColor *setListColorOverride;
 
 @property (nonatomic) NSTimeInterval expectedDuration;
 

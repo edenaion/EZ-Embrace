@@ -3,12 +3,14 @@
 
 #import <Foundation/Foundation.h>
 
-@class Track;
+@class NSColor, Track;
 
 @interface TrackTableRowView : NSTableRowView
 @property (nonatomic, getter=isPlaying) BOOL playing;
 @property (nonatomic) BOOL endsLastPlayedTrack;
 @property (nonatomic) BOOL highlightsUpcomingOtherGenre;
+@property (nonatomic, copy) NSColor *trackColorOverride;
 @property (nonatomic, readonly) BOOL drawsUpcomingOtherGenreHighlight;
+@property (nonatomic, readonly) BOOL drawsTrackColorOverride;
 
 @end

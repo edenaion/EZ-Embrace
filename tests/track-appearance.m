@@ -37,6 +37,7 @@ static NSUUID *sPreviewRequestIdentifier;
 static AuditionState sPreviewState;
 static TrackStatus sTrackStatus;
 static NSString *sTrackGenre;
+static NSColor *sTrackColorOverride;
 
 @implementation MaskView
 @end
@@ -89,6 +90,8 @@ NSArray<NSDictionary<NSString *, id> *> *AuditionOutputDevices(void) { return @[
 - (void) setTrackStatus:(TrackStatus)trackStatus { sTrackStatus = trackStatus; }
 - (NSString *) genre { return sTrackGenre; }
 - (TrackGenreHighlightOverride) genreHighlightOverride { return TrackGenreHighlightOverrideAutomatic; }
+- (NSColor *) setListColorOverride { return sTrackColorOverride; }
+- (void) setSetListColorOverride:(NSColor *)color { sTrackColorOverride = [color copy]; }
 @end
 #pragma clang diagnostic pop
 
@@ -332,6 +335,16 @@ int main(void)
         [cell updateColors];
         Check(!genreRow.highlightsUpcomingOtherGenre,
             @"Case-insensitive Cant metadata keeps the ordinary upcoming appearance");
+        sTrackGenre = @"Electronic";
+        sTrackColorOverride = [NSColor colorWithSRGBRed:0.35 green:0.65 blue:0.90 alpha:1];
+        [cell updateColors];
+        Check(genreRow.drawsTrackColorOverride && !genreRow.drawsUpcomingOtherGenreHighlight,
+            @"per-track cosmetic color overrides automatic mint without changing classification");
+        genreRow.selected = YES;
+        Check(!genreRow.drawsTrackColorOverride,
+            @"selection remains visible over a per-track cosmetic color");
+        genreRow.selected = NO;
+        sTrackColorOverride = nil;
         [window.contentView addSubview:cell];
         cell.testTrack = nil;
         preferences.textContrastPercent = 0;

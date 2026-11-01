@@ -913,10 +913,10 @@ static NSInteger sAutoGapMaximum = 16;
 }
 
 
-- (IBAction) toggleGenreHighlight:(id)sender
+- (IBAction) toggleModernSong:(id)sender
 {
     EmbraceLogMethod();
-    [[self tracksController] toggleGenreHighlight:self];
+    [[self tracksController] toggleModernSong:self];
 }
 
 
@@ -956,7 +956,7 @@ static NSInteger sAutoGapMaximum = 16;
         action == @selector(toggleMarkAsPlayed:) ||
         action == @selector(toggleStopsAfterPlaying:) ||
         action == @selector(toggleIgnoreAutoGap:) ||
-        action == @selector(toggleGenreHighlight:) ||
+        action == @selector(toggleModernSong:) ||
         action == @selector(revealTime:))
     {
         return [[self tracksController] validateMenuItem:menuItem];

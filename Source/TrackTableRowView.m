@@ -32,7 +32,19 @@
 
 - (BOOL) drawsUpcomingOtherGenreHighlight
 {
-    return _highlightsUpcomingOtherGenre && !self.isSelected;
+    return _highlightsUpcomingOtherGenre && !_trackColorOverride && !self.isSelected;
+}
+
+- (void) setTrackColorOverride:(NSColor *)trackColorOverride
+{
+    if ((_trackColorOverride == trackColorOverride) || [_trackColorOverride isEqual:trackColorOverride]) return;
+    _trackColorOverride = [trackColorOverride copy];
+    [self setNeedsDisplay:YES];
+}
+
+- (BOOL) drawsTrackColorOverride
+{
+    return _trackColorOverride && !self.isSelected;
 }
 
 - (void) drawBackgroundInRect:(NSRect)dirtyRect
@@ -45,6 +57,10 @@
     }
     if (self.drawsUpcomingOtherGenreHighlight) {
         [[[Preferences sharedInstance] upcomingOtherGenreColor] set];
+        NSRectFill(self.bounds);
+    }
+    if (self.drawsTrackColorOverride) {
+        [_trackColorOverride set];
         NSRectFill(self.bounds);
     }
     if (!_playing || [self isSelected]) return;

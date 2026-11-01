@@ -9,6 +9,7 @@
 #import "WorkerService.h"
 #import "HugError.h"
 
+#import <AppKit/AppKit.h>
 #import <AVFoundation/AVFoundation.h>
 
 NSString * const TrackDidModifyTitleNotificationName       = @"TrackDidModifyTitleNotificationName";
@@ -24,6 +25,31 @@ static NSString * const sStatusKey            = @"trackStatus";
 static NSString * const sPlayedTimeKey        = @"playedTime";
 static NSString * const sCueStartTimeKey      = @"cueStartTime";
 static NSString * const sGenreHighlightOverrideKey = @"genreHighlightOverride";
+static NSString * const sSetListColorOverrideKey = @"setListColorOverride";
+
+
+static NSColor *sSetListColorFromStateValue(id value)
+{
+    if (![value isKindOfClass:NSArray.class] || [value count] != 4) return nil;
+    CGFloat components[4] = {};
+    for (NSUInteger index = 0; index < 4; index++) {
+        id component = value[index];
+        if (![component respondsToSelector:@selector(doubleValue)]) return nil;
+        double number = [component doubleValue];
+        if (!isfinite(number) || number < 0 || number > 1) return nil;
+        components[index] = number;
+    }
+    return [NSColor colorWithSRGBRed:components[0] green:components[1]
+                                blue:components[2] alpha:components[3]];
+}
+
+
+static NSArray<NSNumber *> *sStateValueFromSetListColor(NSColor *color)
+{
+    NSColor *rgb = [color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    if (!rgb) return nil;
+    return @[ @(rgb.redComponent), @(rgb.greenComponent), @(rgb.blueComponent), @(rgb.alphaComponent) ];
+}
 
 
 @interface Track ()
@@ -305,6 +331,10 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
             NSError *unarchiveError = nil;
             newValue = [NSKeyedUnarchiver unarchivedObjectOfClass:[NSError class] fromData:newValue error:&unarchiveError];
         }
+        if ([key isEqualToString:sSetListColorOverrideKey]) {
+            newValue = sSetListColorFromStateValue(newValue);
+            if (!newValue) continue;
+        }
         
         if (![oldValue isEqual:newValue]) {
             // Transform NSNumbers to NSDates for various keys
@@ -384,6 +414,8 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     if (_genreHighlightOverride != TrackGenreHighlightOverrideAutomatic) {
         [state setObject:@(_genreHighlightOverride) forKey:sGenreHighlightOverrideKey];
     }
+    NSArray<NSNumber *> *setListColor = sStateValueFromSetListColor(_setListColorOverride);
+    if (setListColor) [state setObject:setListColor forKey:sSetListColorOverrideKey];
 
     if (_stopsAfterPlaying) {
         [state setObject:@YES forKey:sStopsAfterPlayingKey];
@@ -929,6 +961,21 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
 
     if (_genreHighlightOverride != genreHighlightOverride) {
         _genreHighlightOverride = genreHighlightOverride;
+        _dirty = YES;
+        [self _saveStateImmediately:NO];
+    }
+}
+
+
+- (void) setSetListColorOverride:(NSColor *)setListColorOverride
+{
+    NSColor *rgb = [setListColorOverride colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    if (rgb) {
+        rgb = [NSColor colorWithSRGBRed:rgb.redComponent green:rgb.greenComponent
+                                  blue:rgb.blueComponent alpha:1];
+    }
+    if ((_setListColorOverride != rgb) && ![_setListColorOverride isEqual:rgb]) {
+        _setListColorOverride = [rgb copy];
         _dirty = YES;
         [self _saveStateImmediately:NO];
     }

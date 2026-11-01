@@ -623,13 +623,15 @@ static OSStatus sHandleAudioDevicePropertyChanged(AudioObjectID inObjectID, UInt
 
 - (void) _updateAutomaticFlatEQForTrack:(Track *)track
 {
-    BOOL automaticFlat = track && TrackGenreUsesUpcomingHighlight([track genre]);
+    BOOL automaticFlat = track && TrackGenreUsesUpcomingHighlightWithOverride(
+        track.genre, track.genreHighlightOverride);
     for (Effect *effect in _effects) {
         if (![[[effect type] name] isEqualToString:EmbraceEffectParametricEQ]) continue;
         EmbraceParametricEQSetAutomaticFlatResponse([effect audioUnit], automaticFlat);
     }
-    EmbraceLog(@"Player", @"Automatic flat EQ %@ for genre %@",
-        automaticFlat ? @"enabled" : @"disabled", [track genre] ?: @"(missing)");
+    EmbraceLog(@"Player", @"Automatic flat EQ %@ for genre %@ (override %ld)",
+        automaticFlat ? @"enabled" : @"disabled", [track genre] ?: @"(missing)",
+        (long)track.genreHighlightOverride);
 }
 
 

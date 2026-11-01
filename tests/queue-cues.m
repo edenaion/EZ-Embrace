@@ -362,26 +362,26 @@ int main(void)
 
         [a setValue:@"Tango-Inst" forKey:@"genre"];
         tableView.syntheticSelectedRows = [NSIndexSet indexSetWithIndex:0];
-        NSMenuItem *greenItem = [[NSMenuItem alloc] initWithTitle:@"Highlight Green"
-            action:@selector(toggleGenreHighlight:) keyEquivalent:@""];
-        Check([controller validateMenuItem:greenItem], @"green override menu enables for a selected Set List row");
-        Check(greenItem.state == NSControlStateValueOff,
-            @"Tango-Inst starts with the green override menu unchecked");
-        [controller toggleGenreHighlight:nil];
+        NSMenuItem *modernItem = [[NSMenuItem alloc] initWithTitle:@"Is Modern Song?"
+            action:@selector(toggleModernSong:) keyEquivalent:@""];
+        Check([controller validateMenuItem:modernItem], @"modern-song toggle enables for a selected Set List row");
+        Check(modernItem.state == NSControlStateValueOff,
+            @"Tango-Inst starts with Is Modern Song unchecked");
+        [controller toggleModernSong:nil];
         Check(a.genreHighlightOverride == TrackGenreHighlightOverrideGreen,
-            @"right-click action forces Tango-Inst green");
+            @"Is Modern Song forces Tango-Inst into modern behavior");
         Check(tableView.targetedReloadCount == 1,
-            @"right-click green override refreshes selected Set List row");
-        Check([controller validateMenuItem:greenItem] && greenItem.state == NSControlStateValueOn,
-            @"green override menu reflects forced-green state");
-        [controller toggleGenreHighlight:nil];
+            @"modern-song toggle refreshes selected Set List row");
+        Check([controller validateMenuItem:modernItem] && modernItem.state == NSControlStateValueOn,
+            @"Is Modern Song reflects forced-modern state");
+        [controller toggleModernSong:nil];
         Check(a.genreHighlightOverride == TrackGenreHighlightOverrideNormal,
-            @"second right-click action forces Tango-Inst normal");
-        Check([controller validateMenuItem:greenItem] && greenItem.state == NSControlStateValueOff,
-            @"green override menu reflects forced-normal state");
+            @"second Is Modern Song action forces traditional behavior");
+        Check([controller validateMenuItem:modernItem] && modernItem.state == NSControlStateValueOff,
+            @"Is Modern Song reflects forced-traditional state");
         a.trackStatus = TrackStatusPlayed;
-        Check(![controller validateMenuItem:greenItem],
-            @"green override menu disables when a row is no longer Up Next");
+        Check([controller validateMenuItem:modernItem],
+            @"modern-song toggle remains available for a played row before requeue");
         a.trackStatus = TrackStatusQueued;
 
         MoveRows(controller, [NSIndexSet indexSetWithIndex:0], 3, NSDragOperationGeneric, @"move a queued entry forward");

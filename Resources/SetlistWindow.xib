@@ -89,10 +89,10 @@
                         <action selector="toggleIgnoreAutoGap:" target="-2" id="788-HS-83w"/>
                     </connections>
                 </menuItem>
-                <menuItem title="Highlight Green" id="grn-tG-001">
+                <menuItem title="Is Modern Song?" id="grn-tG-001">
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <connections>
-                        <action selector="toggleGenreHighlight:" target="-2" id="grn-aC-001"/>
+                        <action selector="toggleModernSong:" target="-2" id="grn-aC-001"/>
                     </connections>
                 </menuItem>
                 <menuItem isSeparatorItem="YES" id="YIs-Oy-9xy"/>

@@ -855,8 +855,8 @@ static BOOL sNormalizeInternalDropTarget(NSInteger *row,
     } else if (action == @selector(toggleIgnoreAutoGap:)) {
         return [self _validateToggleIgnoreAutoGapWithMenuItem:menuItem];
 
-    } else if (action == @selector(toggleGenreHighlight:)) {
-        return [self _validateToggleGenreHighlightWithMenuItem:menuItem];
+    } else if (action == @selector(toggleModernSong:)) {
+        return [self _validateToggleModernSongWithMenuItem:menuItem];
     
     } else if (action == @selector(revealTime:)) {
         return [self _validateRevealTimeWithMenuItem:menuItem];
@@ -866,15 +866,13 @@ static BOOL sNormalizeInternalDropTarget(NSInteger *row,
 }
 
 
-- (BOOL) _validateToggleGenreHighlightWithMenuItem:(NSMenuItem *)menuItem
+- (BOOL) _validateToggleModernSongWithMenuItem:(NSMenuItem *)menuItem
 {
     NSArray<Track *> *selectedTracks = [self selectedTracks];
     BOOL hasGreen = NO;
     BOOL hasNormal = NO;
-    BOOL allQueued = selectedTracks.count > 0;
 
     for (Track *track in selectedTracks) {
-        allQueued &= track.trackStatus == TrackStatusQueued;
         BOOL green = TrackGenreUsesUpcomingHighlightWithOverride(
             track.genre, track.genreHighlightOverride);
         hasGreen |= green;
@@ -883,7 +881,7 @@ static BOOL sNormalizeInternalDropTarget(NSInteger *row,
 
     menuItem.state = hasGreen && hasNormal ? NSControlStateValueMixed :
         (hasGreen ? NSControlStateValueOn : NSControlStateValueOff);
-    return allQueued;
+    return selectedTracks.count > 0;
 }
 
 
@@ -1171,11 +1169,11 @@ static BOOL sNormalizeInternalDropTarget(NSInteger *row,
 }
 
 
-- (void) toggleGenreHighlight:(id)sender
+- (void) toggleModernSong:(id)sender
 {
     EmbraceLogMethod();
 
-    if (![self _validateToggleGenreHighlightWithMenuItem:nil]) return;
+    if (![self _validateToggleModernSongWithMenuItem:nil]) return;
 
     NSArray<Track *> *selectedTracks = [self selectedTracks];
     BOOL allGreen = selectedTracks.count > 0;

@@ -137,6 +137,9 @@ int main(void)
         track.genreHighlightOverride = TrackGenreHighlightOverrideGreen;
         Check(track.genreHighlightOverride == TrackGenreHighlightOverrideGreen,
             @"track accepts manual green highlight override");
+        track.setListColorOverride = [NSColor colorWithSRGBRed:0.20 green:0.55 blue:0.85 alpha:0.40];
+        Check(fabs(track.setListColorOverride.alphaComponent - 1) < 0.001,
+            @"per-track cosmetic color stores as an opaque Set List background");
 
         CheckNear(track.cueStartTime, 0, @"new tracks default to cue zero");
         CheckNear(track.cueOffset, 0, @"zero cue has no imported-play offset");
@@ -182,12 +185,19 @@ int main(void)
         NSDictionary *saved = [NSDictionary dictionaryWithContentsOfFile:statePath];
         Check([saved[@"genreHighlightOverride"] integerValue] == TrackGenreHighlightOverrideGreen,
             @"genre highlight override is serialized with the Set List entry");
+        Check([saved[@"setListColorOverride"] count] == 4,
+            @"per-track cosmetic color is serialized as portable sRGB components");
         CheckNear([saved[@"cueStartTime"] doubleValue], 50, @"nonzero cue is serialized with the per-entry state");
         Track *reloaded = [Track trackWithUUID:track.UUID];
         Check(reloaded != nil && WaitUntilResolved(reloaded, 5), @"reload per-entry state through production initializer");
         CheckNear(reloaded.cueStartTime, 50, @"cue survives a persisted-state reload");
         Check(reloaded.genreHighlightOverride == TrackGenreHighlightOverrideGreen,
             @"genre highlight override survives persisted-state reload");
+        NSColor *reloadedColor = [reloaded.setListColorOverride colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+        Check(reloadedColor && fabs(reloadedColor.redComponent - 0.20) < 0.001 &&
+              fabs(reloadedColor.greenComponent - 0.55) < 0.001 &&
+              fabs(reloadedColor.blueComponent - 0.85) < 0.001,
+            @"per-track cosmetic color survives persisted-state reload");
 
         MusicAppManager *manager = [MusicAppManager sharedInstance];
         MusicAppLibraryMetadata *metadata = [MusicAppLibraryMetadata new];
@@ -219,6 +229,8 @@ int main(void)
         Check(duplicate != nil && WaitUntilResolved(duplicate, 5), @"duplicate entry resolves independently");
         Check(![duplicate.UUID isEqual:reloaded.UUID], @"duplicate receives a unique entry UUID");
         CheckNear(duplicate.cueStartTime, 0, @"duplicate cue defaults to zero instead of copying single-use state");
+        Check([duplicate.setListColorOverride isEqual:reloaded.setListColorOverride],
+            @"duplicate keeps the source cosmetic color for reuse in another set");
         NSString *duplicateStatePath = [directory stringByAppendingPathComponent:
                                         [NSString stringWithFormat:@"Tracks/%@.plist", duplicate.UUID.UUIDString]];
         NSDictionary *duplicateState = [NSDictionary dictionaryWithContentsOfFile:duplicateStatePath];
