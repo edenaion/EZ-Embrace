@@ -80,8 +80,13 @@
 - (void) showForTrack:(Track *)track
 {
     if (!track) return;
-    _track = track;
     NSColorPanel *panel = [NSColorPanel sharedColorPanel];
+    if (panel.visible && _track == track) {
+        [panel close];
+        return;
+    }
+
+    _track = track;
     [[NSNotificationCenter defaultCenter] removeObserver:self name:NSWindowWillCloseNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_colorPanelWillClose:)
         name:NSWindowWillCloseNotification object:panel];
