@@ -239,7 +239,7 @@
                         </textFieldCell>
                     </textField>
                     <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" horizontalCompressionResistancePriority="250" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="5Gj-uc-L2S">
-                        <rect key="frame" x="136" y="282" width="244" height="28"/>
+                        <rect key="frame" x="136" y="268" width="244" height="42"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                         <textFieldCell key="cell" controlSize="small" sendsActionOnEndEditing="YES" alignment="center" title="Match Loudness reconciles the perceived loudness of each track, but lowers volume." id="jts-2O-v46">
                             <font key="font" metaFont="smallSystem"/>

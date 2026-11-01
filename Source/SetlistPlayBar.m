@@ -74,7 +74,8 @@
     NSRect bounds = [self bounds];
 
     NSRect barFrame = GetInsetBounds(self);
-    barFrame.size.height = 3;
+    barFrame.size.height = 8;
+    barFrame.origin.y = NSMidY(bounds) - 4;
 
     NSRect bottomFrame = bounds;
     bottomFrame.size.height = 1;
@@ -84,7 +85,7 @@
     
 
     [self _updatePlayheadX];
-    [_playhead setFrame:CGRectMake(_playheadX, 0, 2, 7)];
+    [_playhead setFrame:CGRectMake(_playheadX, NSMidY(bounds) - 9, 6, 18)];
 }
 
 
@@ -102,26 +103,22 @@
 {
     NSRect bounds = [self bounds];
     CGFloat scale = [[self window] backingScaleFactor];
-    _playheadX = round((bounds.size.width - 2) * _percentage * scale) / scale;
+    if (scale <= 0) scale = 1;
+    _playheadX = round((bounds.size.width - 6) * [self percentage] * scale) / scale;
 }
 
 
 #pragma mark - Accessors
 
-- (void) setPercentage:(float)percentage
+- (void) seekPercentageDidChange
 {
-    if (_percentage != percentage) {
-        if (isnan(percentage)) percentage = 0;
-        _percentage = percentage;
+    [_progressBar setPercentage:[self percentage]];
 
-        [_progressBar setPercentage:percentage];
+    CGFloat oldPlayheadX = _playheadX;
+    [self _updatePlayheadX];
 
-        CGFloat oldPlayheadX = _playheadX;
-        [self _updatePlayheadX];
-        
-        if (oldPlayheadX != _playheadX) {
-            [self setNeedsLayout:YES];
-        }
+    if (oldPlayheadX != _playheadX) {
+        [self setNeedsLayout:YES];
     }
 }
 

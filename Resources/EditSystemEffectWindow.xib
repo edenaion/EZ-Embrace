@@ -8,7 +8,6 @@
     <objects>
         <customObject id="-2" userLabel="File's Owner" customClass="EditSystemEffectController">
             <connections>
-                <outlet property="toolbar" destination="meN-VO-IvV" id="L1T-7S-fiv"/>
                 <outlet property="window" destination="5mm-8W-u52" id="RhH-N2-3zC"/>
             </connections>
         </customObject>

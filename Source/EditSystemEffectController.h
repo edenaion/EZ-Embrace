@@ -4,6 +4,8 @@
 #import <Foundation/Foundation.h>
 #import "EditEffectController.h"
 
+extern NSNotificationName const EditSystemEffectControllerDidLoadViewNotification;
+
 @interface EditSystemEffectController : EditEffectController
 
 @end

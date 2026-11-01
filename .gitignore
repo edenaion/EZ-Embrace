@@ -1,0 +1,35 @@
+# Private development files and local build output.
+/TODO.md
+/.codex/
+/dev-docs/
+/logs/
+/_BACKUPS/
+/builds/
+/.verify/
+/verify-tasklist.md
+/plan.md
+AGENTS.md
+CLAUDE.md
+
+# Local macOS and Xcode state.
+.DS_Store
+**/xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# Local credentials and signing material.
+.env
+.env.*
+!.env.example
+*.p12
+*.pem
+*.key
+*.mobileprovision
+*.provisionprofile
+*.keychain-db
+
+# Local diagnostics that can contain user paths or machine details.
+*.crash
+*.ips
+*.spin

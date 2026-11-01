@@ -5,9 +5,16 @@
 #import <AudioToolbox/AudioToolbox.h>
 
 extern NSString * const EffectDidDeallocNotification;
+extern NSString * const EffectBypassDidChangeNotification;
+extern NSString * const EffectEQPresetDidChangeNotification;
 
 @class EffectType;
 @class EffectSettingsController;
+
+typedef NS_ENUM(NSInteger, EQPresetSlot) {
+    EQPresetSlotViolin = 1,
+    EQPresetSlotSinger = 2
+};
 
 @interface Effect : NSObject
 
@@ -20,6 +27,13 @@ extern NSString * const EffectDidDeallocNotification;
 - (void) loadAudioPresetAtFileURL:(NSURL *)fileURL;
 - (BOOL) saveAudioPresetAtFileURL:(NSURL *)fileURL;
 - (void) restoreDefaultValues;
+
+- (BOOL) supportsEQPresetSlots;
+- (BOOL) hasEQPresetInSlot:(EQPresetSlot)slot;
+- (BOOL) saveEQPresetInSlot:(EQPresetSlot)slot;
+- (BOOL) loadEQPresetInSlot:(EQPresetSlot)slot;
+- (BOOL) matchesEQPresetInSlot:(EQPresetSlot)slot;
+- (BOOL) hasFlatEQResponse;
 
 - (NSDictionary *) stateDictionary;
 

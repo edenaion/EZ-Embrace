@@ -7,6 +7,9 @@
 
 @interface EditEffectController : NSWindowController
 
+- (void) moveToolbarControlsIntoContentView;
+- (void) reloadData;
+
 - (id) initWithEffect:(Effect *)effect index:(NSInteger)index;
 
 @property (nonatomic, weak) Effect *effect;
@@ -15,5 +18,7 @@
 - (IBAction) savePreset:(id)sender;
 - (IBAction) restoreDefaultValues:(id)sender;
 - (IBAction) toggleBypass:(id)sender;
+- (IBAction) recallEQPreset:(id)sender;
+- (IBAction) saveEQPreset:(id)sender;
 
 @end

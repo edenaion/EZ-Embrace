@@ -180,21 +180,96 @@ static NSDictionary *sReadLoudness(NSURL *internalURL)
             NSUInteger startTime = [mediaItem startTime];
             NSUInteger stopTime  = [mediaItem stopTime];
 
-            if (startTime || stopTime) {
-                NSMutableDictionary *trackData = [NSMutableDictionary dictionaryWithCapacity:2];
-                
-                if (startTime) [trackData setObject:@(startTime / 1000.0) forKey:TrackKeyStartTime];
-                if (stopTime)  [trackData setObject:@(stopTime  / 1000.0) forKey:TrackKeyStopTime];
-                
-                NSString *location = [[mediaItem location] path];
-                if (location) [result setObject:trackData forKey:location];
-            }
+            NSMutableDictionary *trackData = [NSMutableDictionary dictionaryWithCapacity:3];
+            if (startTime) [trackData setObject:@(startTime / 1000.0) forKey:TrackKeyStartTime];
+            if (stopTime)  [trackData setObject:@(stopTime  / 1000.0) forKey:TrackKeyStopTime];
+            [trackData setObject:[mediaItem genre] ?: @"" forKey:TrackKeyGenre];
+            NSString *persistentIdentifier = mediaItem.persistentID.stringValue;
+            if (persistentIdentifier.length) trackData[@"libraryPersistentIdentifier"] = persistentIdentifier;
+
+            NSString *location = [[mediaItem location] path];
+            if (location) [result setObject:trackData forKey:location];
         }
 
         dispatch_async(dispatch_get_main_queue(), ^{
             reply(result);
         });
     });
+}
+
+static NSDictionary *sLibraryTrack(ITLibMediaItem *item)
+{
+    NSURL *url = item.location;
+    BOOL directory = NO;
+    BOOL readable = url.isFileURL && [[NSFileManager defaultManager] fileExistsAtPath:url.path isDirectory:&directory]
+        && !directory && [[NSFileManager defaultManager] isReadableFileAtPath:url.path];
+    NSString *availability = item.isDRMProtected ? @"Protected audio" : readable ? @"Local file"
+        : url.isFileURL ? @"File unavailable" : item.isCloud ? @"Cloud only" : @"No local file";
+    NSMutableDictionary *track = [@{
+        @"id":item.persistentID.stringValue, @"title":item.title ?: @"", @"artist":item.artist.name ?: @"",
+        @"album":item.album.title ?: @"", @"albumArtist":item.album.albumArtist ?: @"",
+        @"genre":item.genre ?: @"", @"composer":item.composer ?: @"", @"grouping":item.grouping ?: @"",
+        @"comments":item.comments ?: @"", @"kind":item.kind ?: @"",
+        @"sortTitle":item.sortTitle ?: @"", @"sortArtist":item.artist.sortName ?: @"",
+        @"sortAlbum":item.album.sortTitle ?: @"", @"sortAlbumArtist":item.album.sortAlbumArtist ?: @"",
+        @"sortComposer":item.sortComposer ?: @"", @"duration":@(item.totalTime / 1000.0),
+        @"bpm":@(item.beatsPerMinute), @"year":@(item.year), @"trackNumber":@(item.trackNumber),
+        @"discNumber":@(item.album.discNumber), @"rating":@(item.rating), @"playCount":@(item.playCount),
+        @"skipCount":@(item.skipCount), @"bitrate":@(item.bitrate), @"sampleRate":@(item.sampleRate),
+        @"fileSize":@(item.fileSize), @"startTime":@(item.startTime / 1000.0), @"stopTime":@(item.stopTime / 1000.0),
+        @"drmProtected":@(item.isDRMProtected), @"availability":availability,
+        @"location":url.absoluteString ?: @""
+    } mutableCopy];
+    if (item.addedDate) track[@"addedDate"] = item.addedDate;
+    if (item.modifiedDate) track[@"modifiedDate"] = item.modifiedDate;
+    if (item.lastPlayedDate) track[@"lastPlayedDate"] = item.lastPlayedDate;
+    if (item.releaseDate) track[@"releaseDate"] = item.releaseDate;
+    return track;
+}
+
+- (void) performMusicLibraryFetchWithReply:(void (^)(NSDictionary *, NSString *))reply
+{
+    dispatch_async(sLibraryQueue, ^{ @autoreleasepool {
+        NSError *error = nil;
+        if (!_library) _library = [ITLibrary libraryWithAPIVersion:@"1.0" error:&error];
+        else if (![_library reloadData]) error = [NSError errorWithDomain:@"MusicLibrary" code:1
+            userInfo:@{NSLocalizedDescriptionKey:@"The Music library could not be refreshed. Try again after checking library access."}];
+        if (!_library || error) {
+            reply(nil, error.localizedDescription ?: @"The Music library is unavailable. Check Music library access in System Settings > Privacy & Security > Media & Apple Music, then refresh.");
+            return;
+        }
+        NSMutableArray *tracks = [NSMutableArray array];
+        NSMutableSet *trackIDs = [NSMutableSet set];
+        for (ITLibMediaItem *item in _library.allMediaItems) {
+            if (item.isVideo || !item.persistentID || item.mediaKind == ITLibMediaItemMediaKindPDFBooklet ||
+                item.mediaKind == ITLibMediaItemMediaKindDigitalBooklet || item.mediaKind == ITLibMediaItemMediaKindInteractiveBooklet ||
+                item.mediaKind == ITLibMediaItemMediaKindBook || item.mediaKind == ITLibMediaItemMediaKindPDFBook ||
+                item.mediaKind == ITLibMediaItemMediaKindIOSApplication) continue;
+            [tracks addObject:sLibraryTrack(item)];
+            [trackIDs addObject:item.persistentID.stringValue];
+        }
+        NSMutableArray *playlists = [NSMutableArray array];
+        for (ITLibPlaylist *playlist in _library.allPlaylists) {
+            if (!playlist.isVisible || !playlist.persistentID) continue;
+            if (@available(macOS 12.0, *)) { if (playlist.primary) continue; }
+            ITLibDistinguishedPlaylistKind kind = playlist.distinguishedKind;
+            if (kind == ITLibDistinguishedPlaylistKindMovies || kind == ITLibDistinguishedPlaylistKindTVShows ||
+                kind == ITLibDistinguishedPlaylistKindMusicVideos || kind == ITLibDistinguishedPlaylistKindLibraryMusicVideos ||
+                kind == ITLibDistinguishedPlaylistKindHomeVideos || kind == ITLibDistinguishedPlaylistKindApplications ||
+                kind == ITLibDistinguishedPlaylistKindMusicShowsAndMovies) continue;
+            NSMutableArray *items = [NSMutableArray array];
+            for (ITLibMediaItem *item in playlist.items) {
+                NSString *identifier = item.persistentID.stringValue;
+                if (identifier && [trackIDs containsObject:identifier]) [items addObject:identifier];
+            }
+            NSMutableDictionary *row = [@{@"id":playlist.persistentID.stringValue, @"name":playlist.name ?: @"",
+                @"trackIDs":items, @"kind":@(playlist.kind), @"distinguishedKind":@(kind),
+                @"sourceOrder":@(playlists.count)} mutableCopy];
+            if (playlist.parentID) row[@"parentID"] = playlist.parentID.stringValue;
+            [playlists addObject:row];
+        }
+        reply(@{@"tracks":tracks, @"playlists":playlists}, nil);
+    } });
 }
 
 @end
@@ -210,7 +285,7 @@ static NSDictionary *sReadLoudness(NSURL *internalURL)
 
 - (BOOL) listener:(NSXPCListener *)listener shouldAcceptNewConnection:(NSXPCConnection *)connection
 {
-    NSXPCInterface *exportedInterface = [NSXPCInterface interfaceWithProtocol:@protocol(WorkerProtocol)];
+    NSXPCInterface *exportedInterface = EmbraceWorkerXPCInterface();
     [connection setExportedInterface:exportedInterface];
     
     Worker *exportedObject = [[Worker alloc] init];

@@ -6,6 +6,7 @@
 #import "SetlistController.h"
 #import "EffectsController.h"
 #import "PreferencesController.h"
+#import "InterfaceAppearance.h"
 
 #import "EditGraphicEQEffectController.h"
 #import "EditSystemEffectController.h"
@@ -14,12 +15,16 @@
 #import "Preferences.h"
 #import "DebugController.h"
 #import "EffectAdditions.h"
+#import "RestorationAudioUnit.h"
+#import "ParametricEQAudioUnit.h"
 
 #import "Player.h"
 #import "Effect.h"
 #import "Track.h"
 
 #import "MusicAppManager.h"
+#import "MusicLibraryController.h"
+#import "AuditionPlayer.h"
 #import "ScriptsManager.h"
 #import "HugAudioDevice.h"
 
@@ -30,6 +35,15 @@
 #import "EscapePod.h"
 #import "Telemetry.h"
 #import "HugUtils.h"
+
+static NSString * const sSavedWindowLayoutKey = @"SavedPrimaryWindowLayout.v3";
+
+static BOOL sIsUsableWindowRect(NSRect rect)
+{
+    return isfinite(rect.origin.x) && isfinite(rect.origin.y) &&
+           isfinite(rect.size.width) && isfinite(rect.size.height) &&
+           rect.size.width > 0 && rect.size.height > 0;
+}
 
 /*
     EmbracePrivate.m defines endpoints and access keys for telemetry.
@@ -47,7 +61,6 @@
 
 - (IBAction) copySetlist:(id)sender;
 - (IBAction) saveSetlist:(id)sender;
-- (IBAction) exportSetlist:(id)sender;
 
 - (IBAction) changeNumberOfLayoutLines:(id)sender;
 - (IBAction) changeShortensPlayedTracks:(id)sender;
@@ -68,6 +81,7 @@
 - (IBAction) showEffectsWindow:(id)sender;
 - (IBAction) showPreferences:(id)sender;
 - (IBAction) showCurrentTrack:(id)sender;
+- (IBAction) showMusicLibrary:(id)sender;
 
 - (IBAction) sendFeedback:(id)sender;
 
@@ -92,6 +106,7 @@
     SetlistController      *_setlistController;
     EffectsController      *_effectsController;
     NSWindowController     *_currentTrackController;
+    MusicLibraryController *_musicLibraryController;
     PreferencesController  *_preferencesController;
 
 #if DEBUG
@@ -101,6 +116,10 @@
     NSMutableArray    *_editEffectControllers;
     
     NSXPCConnection   *_connectionToWorker;
+    BOOL _automaticArrangementEnabled;
+    NSInteger _automaticArrangementTextSize;
+    BOOL _automaticArrangementScalesWithWindow;
+    NSValue *_pendingAutomaticEqualizerFrame;
 }
 
 
@@ -118,6 +137,26 @@
         EmbraceLog(category, @"%@", message);
     });
 
+    TelemetrySetBasePath(GetApplicationSupportDirectory());
+
+    NSString *escapePodTelemetryName = @"Crashes";
+    EscapePodSetTelemetryName(escapePodTelemetryName);
+
+    if (!HugCrashPadIsDebuggerAttached()) {
+        NSString *helperPath = [[NSBundle mainBundle] sharedSupportPath];
+
+        helperPath = [helperPath stringByAppendingPathComponent:@"Crash Pad.app"];
+        helperPath = [helperPath stringByAppendingPathComponent:@"Contents"];
+        helperPath = [helperPath stringByAppendingPathComponent:@"MacOS"];
+        helperPath = [helperPath stringByAppendingPathComponent:@"Crash Pad"];
+
+        HugCrashPadSetHelperPath(helperPath);
+
+        EscapePodSetIgnoredThreadProvider(HugCrashPadGetIgnoredThread);
+        EscapePodSetSignalCallback(HugCrashPadSignalHandler);
+        EscapePodInstall();
+    }
+
     // Load preferences
     [Preferences sharedInstance];
 
@@ -127,13 +166,10 @@
     // Load scripts
     [ScriptsManager sharedInstance];
     
+    EmbraceRegisterRestorationAudioUnits();
+    EmbraceRegisterParametricEQAudioUnit();
     [EffectType embrace_registerMappedEffects];
-
-    TelemetrySetBasePath(GetApplicationSupportDirectory());
-    
-    NSString *escapePodTelemetryName = @"Crashes";
-    
-    EscapePodSetTelemetryName(escapePodTelemetryName);
+    EmbraceMigrateDefaultEqualizer([Preferences sharedInstance]);
 
 #if EmbraceEnableTelemetry
     TelemetryRegisterURL(
@@ -153,25 +189,13 @@
 #endif
 
     if (!HugCrashPadIsDebuggerAttached()) {
-        NSString *helperPath = [[NSBundle mainBundle] sharedSupportPath];
-        
-        helperPath = [helperPath stringByAppendingPathComponent:@"Crash Pad.app"];
-        helperPath = [helperPath stringByAppendingPathComponent:@"Contents"];
-        helperPath = [helperPath stringByAppendingPathComponent:@"MacOS"];
-        helperPath = [helperPath stringByAppendingPathComponent:@"Crash Pad"];
-    
-        HugCrashPadSetHelperPath(helperPath);
-
-        EscapePodSetIgnoredThreadProvider(HugCrashPadGetIgnoredThread);
-        EscapePodSetSignalCallback(HugCrashPadSignalHandler);
-
-        EscapePodInstall();
         TelemetrySend(EscapePodGetTelemetryName(), NO);
     }
 
     _setlistController      = [[SetlistController alloc] init];
     _effectsController      = [[EffectsController alloc] init];
     _currentTrackController = [[CurrentTrackController alloc] init];
+    _musicLibraryController = [[MusicLibraryController alloc] init];
 
     [self _showPreviouslyVisibleWindows];
 
@@ -185,6 +209,8 @@
 #endif
 
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_handlePreferencesDidChange:) name:PreferencesDidChangeNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_handleScreenParametersDidChange:) name:NSApplicationDidChangeScreenParametersNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_handleEffectEditorDidLoad:) name:EditSystemEffectControllerDidLoadViewNotification object:nil];
 
     [self _handlePreferencesDidChange:nil];
 
@@ -203,6 +229,7 @@
     if ([visibleWindows containsObject:@"current-track"]) {
         [self showCurrentTrack:self];
     }
+    if ([visibleWindows containsObject:@"music-library"]) [self showMusicLibrary:self];
 
     // Always show Set List
     [self showSetlistWindow:self];
@@ -223,6 +250,9 @@
 
     if ([[_currentTrackController window] isVisible]) {
         [visibleWindows addObject:@"current-track"];
+    }
+    if ([_musicLibraryController isWindowLoaded] && [[_musicLibraryController window] isVisible]) {
+        [visibleWindows addObject:@"music-library"];
     }
 
     [[NSUserDefaults standardUserDefaults] setObject:visibleWindows forKey:@"visible-windows"];
@@ -276,6 +306,7 @@
 
     [self _saveVisibleWindows];
 
+    [AuditionPlayer shutdownIfLoaded];
     [[Player sharedInstance] saveEffectState];
     [[Player sharedInstance] hardStop];
     
@@ -311,14 +342,7 @@
 {
     for (Effect *effect in [[Player sharedInstance] effects]) {
         NSString *effectName = [[effect type] name];
-
-        if ([effectName isEqualToString:EmbraceMappedEffect10BandEQ] ||
-            [effectName isEqualToString:EmbraceMappedEffect31BandEQ] ||
-            [effectName isEqualToString:@"AUGraphicEQ"] ||
-            [effectName isEqualToString:@"AUNBandEQ"]
-        ) {
-            return [self editControllerForEffect:effect];
-        }
+        if ([effectName isEqualToString:EmbraceEffectParametricEQ]) return [self editControllerForEffect:effect];
     }
 
     return nil;
@@ -350,13 +374,74 @@
     ThemeType themeType = [preferences themeType];
     NSAppearance *appearance = nil;
 
-    if (themeType == ThemeTypeLight) {
+    if (themeType == ThemeTypeLight || themeType == ThemeTypeBlush) {
         appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
     } else if (themeType == ThemeTypeDark) {
         appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     }
     
     [[NSApplication sharedApplication] setAppearance:appearance];
+
+    BOOL automaticallyArrange = preferences.automaticallyArrangesWindows;
+    BOOL layoutInputsChanged = preferences.textSizePercent != _automaticArrangementTextSize ||
+        preferences.scalesInterfaceWithWindow != _automaticArrangementScalesWithWindow;
+    if (automaticallyArrange && (!_automaticArrangementEnabled || layoutInputsChanged)) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self arrangeWindowsAutomatically]; });
+    }
+    _automaticArrangementEnabled = automaticallyArrange;
+    _automaticArrangementTextSize = preferences.textSizePercent;
+    _automaticArrangementScalesWithWindow = preferences.scalesInterfaceWithWindow;
+}
+
+
+- (void) _handleScreenParametersDidChange:(NSNotification *)note
+{
+    if (![Preferences sharedInstance].automaticallyArrangesWindows) return;
+    dispatch_async(dispatch_get_main_queue(), ^{ [self arrangeWindowsAutomatically]; });
+}
+
+- (void) _handleEffectEditorDidLoad:(NSNotification *)note
+{
+    if (!_pendingAutomaticEqualizerFrame || note.object != [self _equalizerEffectController]) return;
+    NSWindow *window = [[self _equalizerEffectController] window];
+    [InterfaceAppearance applyAutomaticFrame:_pendingAutomaticEqualizerFrame.rectValue toWindow:window];
+    _pendingAutomaticEqualizerFrame = nil;
+    [self saveWindowLayout];
+}
+
+
+- (NSWindow *) _primaryWindowForIdentifier:(NSString *)identifier
+{
+    if ([identifier isEqualToString:WindowBorderSetList]) return [_setlistController window];
+    if ([identifier isEqualToString:WindowBorderCurrentTrack]) return [_currentTrackController window];
+    if ([identifier isEqualToString:WindowBorderMusicLibrary]) return [_musicLibraryController window];
+    if ([identifier isEqualToString:WindowLayoutEqualizer]) return [[self _equalizerEffectController] window];
+    return nil;
+}
+
+
+- (void) _showAutomaticWindows
+{
+    [_setlistController showWindow:self];
+    [_musicLibraryController showWindow:self];
+    [[self _equalizerEffectController] showWindow:self];
+    [[_currentTrackController window] orderOut:self];
+}
+
+
+- (NSScreen *) _screenMatchingSavedVisibleFrame:(NSRect)savedFrame
+{
+    NSScreen *best = nil;
+    CGFloat bestScore = CGFLOAT_MAX;
+    for (NSScreen *screen in [NSScreen screens]) {
+        NSRect visible = screen.visibleFrame;
+        CGFloat score = fabs(NSMinX(visible) - NSMinX(savedFrame)) +
+                        fabs(NSMinY(visible) - NSMinY(savedFrame)) +
+                        fabs(NSWidth(visible) - NSWidth(savedFrame)) +
+                        fabs(NSHeight(visible) - NSHeight(savedFrame));
+        if (score < bestScore) { best = screen; bestScore = score; }
+    }
+    return best ?: [NSScreen mainScreen];
 }
 
 
@@ -374,7 +459,7 @@
     if (!_connectionToWorker) {
         __weak id weakSelf = self;
 
-        NSXPCInterface *interface = [NSXPCInterface interfaceWithProtocol:@protocol(WorkerProtocol)];
+        NSXPCInterface *interface = EmbraceWorkerXPCInterface();
 
         NSString *serviceName = GetBundleIdentifierWithSuffix(@"EmbraceWorker");
     
@@ -426,6 +511,109 @@
 }
 
 
+- (BOOL) hasSavedWindowLayout
+{
+    NSDictionary *saved = [[NSUserDefaults standardUserDefaults] dictionaryForKey:sSavedWindowLayoutKey];
+    return [saved isKindOfClass:[NSDictionary class]] && saved.count == 4;
+}
+
+
+- (void) saveWindowLayout
+{
+    NSArray *identifiers = @[WindowBorderSetList, WindowBorderCurrentTrack, WindowBorderMusicLibrary,
+                             WindowLayoutEqualizer];
+    NSMutableDictionary *saved = [NSMutableDictionary dictionaryWithCapacity:identifiers.count];
+    for (NSString *identifier in identifiers) {
+        NSWindow *window = [self _primaryWindowForIdentifier:identifier];
+        NSScreen *screen = window.screen ?: [NSScreen mainScreen];
+        if (!window || !screen) continue;
+        saved[identifier] = @{
+            @"frame": NSStringFromRect(window.frame),
+            @"visibleFrame": NSStringFromRect(screen.visibleFrame),
+            @"visible": @(window.isVisible)
+        };
+    }
+    if (saved.count == identifiers.count) {
+        [[NSUserDefaults standardUserDefaults] setObject:saved forKey:sSavedWindowLayoutKey];
+    }
+}
+
+
+- (BOOL) recallWindowLayout
+{
+    NSDictionary *saved = [[NSUserDefaults standardUserDefaults] dictionaryForKey:sSavedWindowLayoutKey];
+    if (![saved isKindOfClass:[NSDictionary class]] || saved.count != 4) return NO;
+
+    NSArray *identifiers = @[WindowBorderSetList, WindowBorderMusicLibrary, WindowLayoutEqualizer,
+                             WindowBorderCurrentTrack];
+    NSMutableDictionary *validated = [NSMutableDictionary dictionaryWithCapacity:identifiers.count];
+    for (NSString *identifier in identifiers) {
+        NSDictionary *record = saved[identifier];
+        NSString *frameString = [record isKindOfClass:[NSDictionary class]] ? record[@"frame"] : nil;
+        NSString *visibleString = [record isKindOfClass:[NSDictionary class]] ? record[@"visibleFrame"] : nil;
+        NSNumber *isVisible = [record isKindOfClass:[NSDictionary class]] ? record[@"visible"] : nil;
+        if (![frameString isKindOfClass:[NSString class]] || ![visibleString isKindOfClass:[NSString class]] ||
+            ![isVisible isKindOfClass:[NSNumber class]]) return NO;
+        NSRect frame = NSRectFromString(frameString);
+        NSRect source = NSRectFromString(visibleString);
+        if (!sIsUsableWindowRect(frame) || !sIsUsableWindowRect(source)) return NO;
+        validated[identifier] = @{ @"frame": [NSValue valueWithRect:frame],
+                                   @"visibleFrame": [NSValue valueWithRect:source],
+                                   @"visible": isVisible };
+    }
+
+    for (NSString *identifier in identifiers) {
+        NSDictionary *record = validated[identifier];
+        NSRect frame = [record[@"frame"] rectValue];
+        NSRect source = [record[@"visibleFrame"] rectValue];
+        NSScreen *screen = [self _screenMatchingSavedVisibleFrame:source];
+        NSRect target = screen.visibleFrame;
+        CGFloat x = (frame.origin.x - source.origin.x) / source.size.width;
+        CGFloat y = (frame.origin.y - source.origin.y) / source.size.height;
+        frame = NSMakeRect(target.origin.x + x * target.size.width,
+                           target.origin.y + y * target.size.height,
+                           frame.size.width * target.size.width / source.size.width,
+                           frame.size.height * target.size.height / source.size.height);
+        frame = [InterfaceAppearance frame:frame constrainedToVisibleFrame:target];
+        NSWindow *window = [self _primaryWindowForIdentifier:identifier];
+        if ([identifier isEqualToString:WindowLayoutEqualizer] &&
+            ![InterfaceAppearance isInstalledInWindow:window]) {
+            _pendingAutomaticEqualizerFrame = [NSValue valueWithRect:frame];
+        }
+        [InterfaceAppearance applyAutomaticFrame:frame toWindow:window];
+    }
+    for (NSString *identifier in identifiers) {
+        NSWindow *window = [self _primaryWindowForIdentifier:identifier];
+        if ([validated[identifier][@"visible"] boolValue]) [window makeKeyAndOrderFront:self];
+        else [window orderOut:self];
+    }
+    return YES;
+}
+
+
+- (void) arrangeWindowsAutomatically
+{
+    NSScreen *screen = [_setlistController window].screen ?: [NSScreen mainScreen];
+    if (!screen) return;
+    [self _showAutomaticWindows];
+    NSDictionary *frames = [InterfaceAppearance automaticWindowFramesForVisibleFrame:screen.visibleFrame];
+    _pendingAutomaticEqualizerFrame = frames[WindowLayoutEqualizer];
+    for (NSString *identifier in @[WindowBorderSetList, WindowBorderMusicLibrary, WindowLayoutEqualizer]) {
+        NSValue *value = frames[identifier];
+        if (!value) continue;
+        NSWindow *window = [self _primaryWindowForIdentifier:identifier];
+        [InterfaceAppearance applyAutomaticFrame:value.rectValue toWindow:window];
+        if ([identifier isEqualToString:WindowLayoutEqualizer] &&
+            [InterfaceAppearance isInstalledInWindow:window]) {
+            _pendingAutomaticEqualizerFrame = nil;
+        }
+    }
+    // Auto placement is immediately recallable. Ordinary window movement also
+    // remains protected by each window's native frame autosave.
+    [self saveWindowLayout];
+}
+
+
 - (EditEffectController *) editControllerForEffect:(Effect *)effect
 {
     if (!_editEffectControllers) {
@@ -463,7 +651,8 @@
 
     for (EditEffectController *controller in _editEffectControllers) {
         if ([controller effect] == effect) {
-            [controller close];
+            // EmbraceNG aeaf918a: preserve the backing layer for deferred Apple AU updates.
+            [[controller window] orderOut:self];
             if (controller) [toRemove addObject:controller];
         }
     }
@@ -537,6 +726,9 @@
     } else if (action == @selector(showCurrentTrack:)) {
         BOOL yn = [_currentTrackController isWindowLoaded] && [[_currentTrackController window] isMainWindow];
         [menuItem setState:(yn ? NSControlStateValueOn : NSControlStateValueOff)];
+    } else if (action == @selector(showMusicLibrary:)) {
+        BOOL yn = [_musicLibraryController isWindowLoaded] && [[_musicLibraryController window] isMainWindow];
+        [menuItem setState:(yn ? NSControlStateValueOn : NSControlStateValueOff)];
         
     } else if (action == @selector(showEqualizer:)) {
         EditEffectController *equalizerController = [self _equalizerEffectController];
@@ -601,9 +793,6 @@
         [[self crashReportMenuItem]  setHidden:!hasCrashReports];
         [[self crashReportSeparator] setHidden:!hasCrashReports];
 
-        return YES;
-
-    } else if (action == @selector(exportSetlist:)) {
         return YES;
 
     } else if (action == @selector(openSupportFolder:)){
@@ -771,7 +960,6 @@
 }
 
 
-- (IBAction) exportSetlist:(id)sender   {  EmbraceLogMethod();  [_setlistController exportToPlaylist];     }
 - (IBAction) increaseAutoGap:(id)sender {  EmbraceLogMethod();  [_setlistController increaseAutoGap:self]; }
 - (IBAction) decreaseAutoGap:(id)sender {  EmbraceLogMethod();  [_setlistController decreaseAutoGap:self]; }
 - (IBAction) revealTime:(id)sender      {  EmbraceLogMethod();  [_setlistController revealTime:self];      }
@@ -830,6 +1018,13 @@
 {
     EmbraceLogMethod();
     [self _toggleWindowForController:_currentTrackController sender:sender];
+}
+
+- (void) showMusicLibrary { [self showMusicLibrary:self]; }
+
+- (IBAction) showMusicLibrary:(id)sender
+{
+    [self _toggleWindowForController:_musicLibraryController sender:sender];
 }
 
 

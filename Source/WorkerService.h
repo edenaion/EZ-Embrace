@@ -21,5 +21,14 @@ typedef NS_ENUM(NSInteger, WorkerTrackCommand) {
                        reply: (void (^)(NSDictionary *))reply;
 
 - (void) performLibraryParseWithReply: (void (^)(NSDictionary *))reply;
+- (void) performMusicLibraryFetchWithReply:(void (^)(NSDictionary *snapshot, NSString *errorMessage))reply;
 
 @end
+
+NS_INLINE NSXPCInterface *EmbraceWorkerXPCInterface(void)
+{
+    NSXPCInterface *interface = [NSXPCInterface interfaceWithProtocol:@protocol(WorkerProtocol)];
+    NSSet *classes = [NSSet setWithObjects:NSDictionary.class, NSArray.class, NSString.class, NSNumber.class, NSDate.class, nil];
+    [interface setClasses:classes forSelector:@selector(performMusicLibraryFetchWithReply:) argumentIndex:0 ofReply:YES];
+    return interface;
+}

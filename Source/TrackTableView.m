@@ -3,12 +3,14 @@
 
 #import "TrackTableView.h"
 #import "TrackTableCellView.h"
+#import "InterfaceAppearance.h"
 #import "Preferences.h"
 #import "TracksController.h"
 
 
 extern NSColor * const TrackTableViewGetPlayingTextColor(void)
 {
+    if ([[Preferences sharedInstance] themeType] == ThemeTypeBlush) return NSColor.blackColor;
     BOOL darkAqua = IsAppearanceDarkAqua(nil);
 
     NSColor *color = [[NSColor selectedContentBackgroundColor] colorUsingType:NSColorTypeComponentBased];
@@ -33,6 +35,11 @@ extern NSColor * const TrackTableViewGetPlayingTextColor(void)
 
 extern NSColor * const TrackTableViewGetRowHighlightColor(BOOL emphasized)
 {
+    if ([[Preferences sharedInstance] themeType] == ThemeTypeBlush) {
+        return [NSColor colorWithSRGBRed:(emphasized ? 0.96 : 0.98)
+                                   green:(emphasized ? 0.68 : 0.80)
+                                    blue:(emphasized ? 0.80 : 0.87) alpha:1];
+    }
     if (emphasized) {
         return [NSColor selectedContentBackgroundColor];
     } else {
@@ -97,6 +104,10 @@ extern NSColor * const TrackTableViewGetRowHighlightColor(BOOL emphasized)
 
 - (void) _dispatchHeightUpdate
 {
+    if (![[Preferences sharedInstance] shortensPlayedTracks]) {
+        _rowsNeedingUpdatedHeight = nil;
+        return;
+    }
     if ([_rowsNeedingUpdatedHeight count]) {
         [self beginUpdates];
 
@@ -152,7 +163,10 @@ extern NSColor * const TrackTableViewGetRowHighlightColor(BOOL emphasized)
 - (void) drawGridInClipRect:(NSRect)clipRect
 {
     PerformWithAppearance([self effectiveAppearance], ^{
-        [[NSColor controlBackgroundColor] set];
+        NSColor *background = [[Preferences sharedInstance] themeType] == ThemeTypeBlush
+            ? [InterfaceAppearance blushSetListColor]
+            : [NSColor controlBackgroundColor];
+        [background set];
         [[NSBezierPath bezierPathWithRect:clipRect] fill];
     });
 }
@@ -191,6 +205,18 @@ extern NSColor * const TrackTableViewGetRowHighlightColor(BOOL emphasized)
 }
 
 
+- (void)draggingSession:(NSDraggingSession *)session
+          endedAtPoint:(NSPoint)screenPoint
+             operation:(NSDragOperation)operation
+{
+    if ([[NSTableView class] instancesRespondToSelector:@selector(draggingSession:endedAtPoint:operation:)]) {
+        [super draggingSession:session endedAtPoint:screenPoint operation:operation];
+    }
+
+    [self finishDragModification];
+}
+
+
 - (NSImage *) dragImageForRowsWithIndexes:(NSIndexSet *)dragRows tableColumns:(NSArray *)tableColumns event:(NSEvent *)dragEvent offset:(NSPointPointer)dragImageOffset
 {
     return [NSImage imageNamed:@"DragIcon"];
@@ -225,9 +251,7 @@ extern NSColor * const TrackTableViewGetRowHighlightColor(BOOL emphasized)
         [super draggingEnded:sender];
     }
     
-    _dragInside = NO;
-    _inLocalDrag = NO;
-    [self _updateDrag];
+    [self finishDragModification];
 }
 
 
@@ -237,6 +261,12 @@ extern NSColor * const TrackTableViewGetRowHighlightColor(BOOL emphasized)
         [super concludeDragOperation:sender];
     }
 
+    [self finishDragModification];
+}
+
+
+- (void)finishDragModification
+{
     _dragInside = NO;
     _inLocalDrag = NO;
     [self _updateDrag];

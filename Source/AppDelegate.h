@@ -18,7 +18,13 @@
 
 - (void) showEffectsWindow;
 - (void) showCurrentTrack;
+- (void) showMusicLibrary;
 - (void) showPreferences;
+
+- (BOOL) hasSavedWindowLayout;
+- (void) saveWindowLayout;
+- (BOOL) recallWindowLayout;
+- (void) arrangeWindowsAutomatically;
 
 @property (nonatomic, readonly) SetlistController *setlistController;
 

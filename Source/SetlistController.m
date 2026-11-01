@@ -2,8 +2,10 @@
 // MIT License (or) 1-clause BSD License
 
 #import "SetlistController.h"
+#import "InterfaceAppearance.h"
 
 #import "HugAudioDevice.h"
+#import "HugMeterData.h"
 
 #import "Track.h"
 #import "EffectType.h"
@@ -21,6 +23,7 @@
 #import "NoDropImageView.h"
 #import "Preferences.h"
 #import "SetlistButton.h"
+#import "SetlistEQButton.h"
 #import "SetlistDangerView.h"
 #import "SetlistMeterView.h"
 #import "SetlistPlayBar.h"
@@ -63,6 +66,7 @@ static NSInteger sAutoGapMaximum = 16;
 @property (nonatomic, weak)   IBOutlet SetlistMeterView  *meterView;
 @property (nonatomic, weak)   IBOutlet SetlistPlayBar    *playBar;
 @property (nonatomic, weak)   IBOutlet SetlistSlider     *volumeSlider;
+@property (nonatomic, weak)   IBOutlet NoDropImageView   *volumeIcon;
 
 @property (nonatomic, weak)   IBOutlet InnerShadowView *topInnerShadowView;
 @property (nonatomic, weak)   IBOutlet InnerShadowView *bottomInnerShadowView;
@@ -83,6 +87,7 @@ static NSInteger sAutoGapMaximum = 16;
     double     _volumeBeforeKeyboard;
     BOOL       _confirmStop;
     BOOL       _willCalculateStartAndEndTimes;
+    NSTextField *_queueSummaryLabel;
 }
 
 
@@ -117,7 +122,7 @@ static NSInteger sAutoGapMaximum = 16;
     [window setTitlebarAppearsTransparent:YES];
     [window setTitleVisibility:NSWindowTitleHidden];
     [window setMovableByWindowBackground:YES];
-    [window setTitle:@""];
+    [window setTitle:NSLocalizedString(@"Set List", nil)];
     [[window standardWindowButton:NSWindowMiniaturizeButton] setHidden:YES];
     [[window standardWindowButton:NSWindowZoomButton]        setHidden:YES];
 
@@ -132,6 +137,29 @@ static NSInteger sAutoGapMaximum = 16;
     [[self gearButton] setIcon:SetlistButtonIconGear];
 
     [[self autoGapIcon] setTintColor:[NSColor labelColor]];
+
+    NSRect summaryFrame = [[self scrollView] frame];
+    summaryFrame.origin.y = NSMaxY(summaryFrame);
+    summaryFrame.origin.x = 8;
+    summaryFrame.size.width -= 16;
+    summaryFrame.size.height = 20;
+    _queueSummaryLabel = [NSTextField labelWithString:@""];
+    [_queueSummaryLabel setFrame:summaryFrame];
+    [_queueSummaryLabel setFont:[NSFont systemFontOfSize:11]];
+    [_queueSummaryLabel setTextColor:[NSColor secondaryLabelColor]];
+    [_queueSummaryLabel setLineBreakMode:NSLineBreakByTruncatingTail];
+    [_queueSummaryLabel setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
+    [_queueSummaryLabel setToolTip:NSLocalizedString(@"Finished tracks stay gray in timeline order. A solid divider follows the most recently played track. Drag a gray track into Up Next to queue it again. The playing track has a blue tint and speaker icon.", nil)];
+    Player *player = [Player sharedInstance];
+    [self setPlayer:player];
+    [[[self window] contentView] addSubview:_queueSummaryLabel];
+    [[[self window] contentView] addSubview:[SetlistEQButton buttonUnderMenu:[self gearButton] besideSummary:_queueSummaryLabel player:player]];
+    [[self volumeSlider] setAccessibilityLabel:NSLocalizedString(@"Volume", nil)];
+    [[self volumeSlider] setToolTip:NSLocalizedString(@"Volume. Color follows measured output level: green below -12 dBFS, amber above -12 dBFS, red near 0 dBFS or while the safety limiter is active.", nil)];
+    [[self volumeIcon] setAccessibilityElement:NO];
+    [[self volumeIcon] setToolTip:NSLocalizedString(@"Main output volume", nil)];
+    [self _updateVolumeIcon];
+    [self _updateQueueSummary];
 
 
     // Add titlebar visual effect view
@@ -169,7 +197,6 @@ static NSInteger sAutoGapMaximum = 16;
 
     [self _handlePreferencesDidChange:nil];
 
-    [self setPlayer:[Player sharedInstance]];
     [self _setupPlayer];
 
     [[self volumeSlider] setDragDelegate:self];
@@ -192,6 +219,9 @@ static NSInteger sAutoGapMaximum = 16;
     [window registerForDraggedTypes:[[self tracksController] readableDraggedTypes]];
 
     [(Application *)NSApp registerEventListener:self];
+    [InterfaceAppearance installInWindow:window];
+    [InterfaceAppearance setAllowsIndependentResizeAxes:YES inWindow:window];
+    [InterfaceAppearance setBorderIdentifier:WindowBorderSetList inWindow:window];
 }
 
 
@@ -321,6 +351,7 @@ static NSInteger sAutoGapMaximum = 16;
 
 - (void) _handleTracksControllerDidModifyTracks:(NSNotification *)note
 {
+    [self _updateQueueSummary];
     [self _calculateStartAndEndTimes];
     [self _updatePlayButton];
     [self _updateDragSongsView];
@@ -488,7 +519,7 @@ static NSInteger sAutoGapMaximum = 16;
         } else if (status == TrackStatusPreparing || status == TrackStatusPlaying) {
             if ([track isEqual:[player currentTrack]]) {
                 NSTimeInterval expectedDuration = [track expectedDuration];
-                NSTimeInterval remaining = (status == TrackStatusPreparing) ? [track playDuration] : [player timeRemaining];
+                NSTimeInterval remaining = [player timeRemaining];
                 
                 if (expectedDuration) {
                     remaining = expectedDuration - [player timeElapsed];
@@ -501,7 +532,7 @@ static NSInteger sAutoGapMaximum = 16;
 
         } else if (status == TrackStatusQueued) {
             NSTimeInterval duration = [track expectedDuration];
-            if (!duration) duration = [track playDuration];
+            duration = duration ? MAX(0, duration - [track cueOffset]) : [track queuedPlayDuration];
 
             time += duration;
             endTime = now + time;
@@ -601,53 +632,6 @@ static NSInteger sAutoGapMaximum = 16;
     NSInteger result = [[ExportManager sharedInstance] runModalWithTracks:tracks];
 
     if (result == NSModalResponseOK) {
-        [self _markAsSaved];
-    }
-}
-
-
-- (void) exportToPlaylist
-{
-    EmbraceLogMethod();
-
-    ExportManager *exportManager = [ExportManager sharedInstance];
-
-    NSArray *tracks = [[self tracksController] tracks];
-
-    NSString *suggestedName = [exportManager suggestedNameWithTracks:tracks];
-    NSString *contents = [exportManager stringWithFormat:ExportManagerFormatM3U tracks:tracks];
-
-    NSString *fileName = [suggestedName stringByAppendingPathExtension:@"m3u8"];
-    NSString *UUIDString = [[NSUUID UUID] UUIDString];
-    
-    NSError *error = nil;
-
-    NSString *toPath = [NSTemporaryDirectory() stringByAppendingPathComponent:UUIDString];
-
-    if (!error && toPath) {
-        [[NSFileManager defaultManager] createDirectoryAtPath:toPath withIntermediateDirectories:YES attributes:nil error:&error];
-        toPath = [toPath stringByAppendingPathComponent:fileName];
-    }
-
-    if (!error && toPath) {
-        [contents writeToFile:toPath atomically:YES encoding:NSUTF8StringEncoding error:&error];
-    }
-
-    if (!error && toPath) {
-        NSWorkspace *workspace = [NSWorkspace sharedWorkspace];
-
-        NSURL *musicAppURL = [workspace URLForApplicationWithBundleIdentifier:@"com.apple.Music"];
-        NSURL *toPathURL = [NSURL fileURLWithPath:toPath];
-
-        NSWorkspaceOpenConfiguration *configuration = [NSWorkspaceOpenConfiguration configuration];
-        
-        [configuration setAddsToRecentItems:NO];
-        [configuration setActivates:NO];
-        
-        if (toPathURL) {
-            [workspace openURLs:@[ toPathURL ] withApplicationAtURL:musicAppURL configuration:configuration completionHandler:nil];
-        }
-        
         [self _markAsSaved];
     }
 }
@@ -929,6 +913,34 @@ static NSInteger sAutoGapMaximum = 16;
 }
 
 
+- (IBAction) toggleModernSong:(id)sender
+{
+    EmbraceLogMethod();
+    [[self tracksController] toggleModernSong:self];
+}
+
+
+- (IBAction) useAutomaticSongType:(id)sender
+{
+    EmbraceLogMethod();
+    [[self tracksController] useAutomaticSongType:self];
+}
+
+
+- (IBAction) markAsTraditionalSong:(id)sender
+{
+    EmbraceLogMethod();
+    [[self tracksController] markAsTraditionalSong:self];
+}
+
+
+- (IBAction) markAsModernSong:(id)sender
+{
+    EmbraceLogMethod();
+    [[self tracksController] markAsModernSong:self];
+}
+
+
 - (IBAction) showGearMenu:(id)sender
 {
     EmbraceLogMethod();
@@ -965,6 +977,10 @@ static NSInteger sAutoGapMaximum = 16;
         action == @selector(toggleMarkAsPlayed:) ||
         action == @selector(toggleStopsAfterPlaying:) ||
         action == @selector(toggleIgnoreAutoGap:) ||
+        action == @selector(toggleModernSong:) ||
+        action == @selector(useAutomaticSongType:) ||
+        action == @selector(markAsTraditionalSong:) ||
+        action == @selector(markAsModernSong:) ||
         action == @selector(revealTime:))
     {
         return [[self tracksController] validateMenuItem:menuItem];
@@ -1053,6 +1069,24 @@ static NSInteger sAutoGapMaximum = 16;
 
 #pragma mark - Player
 
+- (void) _updateVolumeIcon
+{
+    BOOL audible = [[Player sharedInstance] volume] > 0.001;
+    [[self volumeIcon] setTintColor:audible ? [NSColor systemBlueColor] : [NSColor tertiaryLabelColor]];
+    [[self volumeIcon] setAlphaValue:audible ? 0.9 : 0.55];
+}
+
+- (void) _updateQueueSummary
+{
+    NSUInteger played = 0, queued = 0;
+    for (Track *track in [[self tracksController] tracks]) {
+        if ([track trackStatus] == TrackStatusPlayed) played++;
+        if ([track trackStatus] == TrackStatusQueued) queued++;
+    }
+    NSString *summary = [NSString stringWithFormat:NSLocalizedString(@"%lu up next  ·  %lu played", nil), (unsigned long)queued, (unsigned long)played];
+    if (![[_queueSummaryLabel stringValue] isEqualToString:summary]) [_queueSummaryLabel setStringValue:summary];
+}
+
 - (void) _setupPlayer
 {
     Player *player = [Player sharedInstance];
@@ -1088,10 +1122,12 @@ static NSInteger sAutoGapMaximum = 16;
 
         [[self dangerView] setMetering:NO];
         [[self meterView] setMetering:NO];
+        [[self volumeSlider] setLevelColor:nil];
     }
 
     [self _updatePlayButton];
     [self _calculateStartAndEndTimes];
+    [self _updateQueueSummary];
 }
 
 
@@ -1104,6 +1140,7 @@ static NSInteger sAutoGapMaximum = 16;
 - (void) player:(Player *)player didUpdateVolume:(double)volume
 {
     [self _updatePlayButton];
+    [self _updateVolumeIcon];
 }
 
 
@@ -1176,6 +1213,11 @@ static NSInteger sAutoGapMaximum = 16;
 
     [[self meterView] setLeftMeterData:[player leftMeterData]
                         rightMeterData:[player rightMeterData]];
+
+    float peak = MAX([[player leftMeterData] peakLevel], [[player rightMeterData] peakLevel]);
+    BOOL limited = [[player leftMeterData] isLimiterActive] || [[player rightMeterData] isLimiterActive];
+    [[self volumeSlider] setLevelColor:[player isPlaying] ? [SetlistMeterView colorForPeakLevel:peak limiterActive:limited] : nil];
+    [self _updateQueueSummary];
     
     [self _updatePlayButton];
 }

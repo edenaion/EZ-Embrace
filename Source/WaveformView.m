@@ -278,14 +278,16 @@
 }
 
 
-- (void) setPercentage:(float)percentage
+- (Track *) seekTrack
 {
-    if (_percentage != percentage) {
-        _percentage = percentage;
+    return [super seekTrack] == _track ? _track : nil;
+}
 
-        [_inactiveLayer setContentsRect:CGRectMake(_percentage, 0, 1.0 - _percentage, 1)];
-        [_activeLayer   setContentsRect:CGRectMake(0, 0, _percentage, 1)];
-    }
+- (void) seekPercentageDidChange
+{
+    CGFloat percentage = [self percentage];
+    [_inactiveLayer setContentsRect:CGRectMake(percentage, 0, 1.0 - percentage, 1)];
+    [_activeLayer   setContentsRect:CGRectMake(0, 0, percentage, 1)];
 }
 
 

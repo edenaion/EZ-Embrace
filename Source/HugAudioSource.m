@@ -10,12 +10,20 @@
 #import "HugAudioSettings.h"
 #import "HugDebugFile.h"
 
+#include <stdatomic.h>
+
 #define DEBUG_AUDIO_SOURCE_BUFFERS 0
 
 typedef struct {
     NSInteger frameIndex;
     NSInteger totalFrames;
+    NSInteger initialFrame;
     double sampleRate;
+    atomic_uint_fast64_t seekRequest;
+    atomic_uint availableFrames;
+    atomic_bool decodingComplete;
+    UInt32 seekGeneration;
+    BOOL fadedOutForSeek;
     AudioBufferList *bufferList;
 
     AudioBufferList *inputScratch;
@@ -44,6 +52,8 @@ static void sFillBufferList(RenderContext *context, UInt32 rawFrameCount, AudioB
 
         offset = framesToCopy;
         context->frameIndex += framesToCopy;
+        if (context->frameIndex < 0) return;
+        context->frameIndex = context->initialFrame;
     }
 
     // Copy track data
@@ -221,6 +231,9 @@ static OSStatus sConverterInputCallback(
         AudioBufferList *inputScratch = HugAudioBufferListCreate(channelCount, outputFrameSize, YES);
 
         _context = calloc(1, sizeof(RenderContext));
+        atomic_init(&_context->seekRequest, 0);
+        atomic_init(&_context->availableFrames, 0);
+        atomic_init(&_context->decodingComplete, false);
         _context->sampleRate   = format.mSampleRate;
         _context->frameIndex   = format.mSampleRate * -padding;
         _context->totalFrames  = (UInt32)totalFrames;
@@ -234,10 +247,10 @@ static OSStatus sConverterInputCallback(
 }
 
 
-- (void) _finishFillBuffer
+- (void) _finishFillBufferWithError:(NSError *)readError
 {
     if (!_error) {
-        _error = [_audioFile error];
+        _error = readError ?: [_audioFile error];
     }
     
     if (!_error) {
@@ -266,12 +279,15 @@ static OSStatus sConverterInputCallback(
 
     NSInteger bytesPerFrame = format.mBytesPerFrame;
     NSInteger totalFrames   = _context->totalFrames;
-    NSInteger primeAmount   = (format.mSampleRate * 10);
+    NSInteger primeAmount   = context->initialFrame + (format.mSampleRate * 10);
     if (totalFrames < primeAmount) primeAmount = totalFrames;
 
     dispatch_semaphore_t primeSemaphore = dispatch_semaphore_create(0);
 
-    __block BOOL shouldCancel = NO;
+    __block atomic_bool shouldCancel;
+    __block atomic_bool readFailed;
+    atomic_init(&shouldCancel, false);
+    atomic_init(&readFailed, false);
     __weak id weakSelf = self;
 
     NSTimeInterval startTime = [NSDate timeIntervalSinceReferenceDate];
@@ -289,9 +305,10 @@ static OSStatus sConverterInputCallback(
         
         BOOL ok = YES;
         BOOL needsSignal = YES;
+        NSError *readError = nil;
         
         while (ok) {
-            if (shouldCancel) break;
+            if (atomic_load_explicit(&shouldCancel, memory_order_acquire)) break;
         
             UInt32 maxFrames  = 32768;
             UInt32 frameCount = (UInt32)framesRemaining;
@@ -308,6 +325,11 @@ static OSStatus sConverterInputCallback(
 
             if (frameCount > 0) {
                 ok = [_audioFile readFrames:&frameCount intoBufferList:fillBufferList];
+                if (!ok) {
+                    readError = [_audioFile error] ?: [NSError errorWithDomain:HugErrorDomain code:HugErrorReadFailed userInfo:nil];
+                    atomic_store_explicit(&readFailed, true, memory_order_release);
+                    break;
+                }
             }
 
             // ExtAudioFileRead() is documented to return 0 when the end of the file is reached.
@@ -317,6 +339,7 @@ static OSStatus sConverterInputCallback(
             }
        
             framesAvailable += frameCount;
+            atomic_store_explicit(&context->availableFrames, (UInt32)framesAvailable, memory_order_release);
             
             if ((framesAvailable >= primeAmount) && needsSignal) {
                 dispatch_semaphore_signal(primeSemaphore);
@@ -329,6 +352,7 @@ static OSStatus sConverterInputCallback(
             bytesRemaining  -= frameCount * bytesPerFrame;
         }
 
+        atomic_store_explicit(&context->decodingComplete, true, memory_order_release);
         if (needsSignal) {
             dispatch_semaphore_signal(primeSemaphore);
         }
@@ -340,7 +364,7 @@ static OSStatus sConverterInputCallback(
             
             HugLog(@"HugAudioSource", @"Read finished in %ldms", (long)((now - startTime) * 1000));
         
-            [weakSelf _finishFillBuffer];
+            [weakSelf _finishFillBufferWithError:readError];
         });
     });
 
@@ -351,11 +375,15 @@ static OSStatus sConverterInputCallback(
     if (dispatch_semaphore_wait(primeSemaphore, dispatch_time(0, fiveSecondsInNs))) {
         HugLog(@"HugAudioSource", @"dispatch_semaphore_wait() timed out for %@", _audioFile);
         _error = [NSError errorWithDomain:HugErrorDomain code:HugErrorReadTooSlow userInfo:nil];
-        shouldCancel = YES;
+        atomic_store_explicit(&shouldCancel, true, memory_order_release);
 
         return NO;
 
     } else {
+        if (atomic_load_explicit(&readFailed, memory_order_acquire)) {
+            _error = [_audioFile error] ?: [NSError errorWithDomain:HugErrorDomain code:HugErrorReadFailed userInfo:nil];
+            return NO;
+        }
         HugLog(@"HugAudioSource", @"%@ primed!", _audioFile);
         
         return YES;
@@ -418,9 +446,21 @@ static OSStatus sConverterInputCallback(
                       padding: (NSTimeInterval) padding
             completionHandler: (void (^)(HugAudioSource *)) completionHandler
 {
+    return [self prepareWithStartTime:startTime stopTime:stopTime padding:padding initialTime:0 completionHandler:completionHandler];
+}
+
+- (BOOL) prepareWithStartTime:(NSTimeInterval)startTime
+                    stopTime:(NSTimeInterval)stopTime
+                     padding:(NSTimeInterval)padding
+                 initialTime:(NSTimeInterval)initialTime
+           completionHandler:(HugAudioSourceCompletionHandler)completionHandler
+{
+    if (!isfinite(initialTime) || initialTime < 0) return NO;
     if (![self _makeContextWithStartTime:startTime stopTime:stopTime padding:padding]) {
         return NO;
     }
+    _context->initialFrame = (NSInteger)MIN(initialTime * _context->sampleRate, MAX(0, _context->totalFrames - 1));
+    if (_context->frameIndex == 0) _context->frameIndex = _context->initialFrame;
     
     if (![self _fillBuffer]) {
         return NO;
@@ -443,6 +483,23 @@ static OSStatus sConverterInputCallback(
         UInt32 sourceChannelCount = context->bufferList->mNumberBuffers;
         UInt32 outputChannelCount = ioData->mNumberBuffers;
 
+        uint64_t request = atomic_load_explicit(&context->seekRequest, memory_order_acquire);
+        UInt32 generation = (UInt32)(request >> 32);
+        UInt32 targetFrame = (UInt32)request;
+        UInt32 available = atomic_load_explicit(&context->availableFrames, memory_order_acquire);
+        // Wait for decoding to reach the target. The render thread never waits on the decoder.
+        NSUInteger needed = MIN((NSUInteger)context->totalFrames,
+            (NSUInteger)targetFrame + MAX(context->converterScratchFrameSize, frameCount) * 2);
+        BOOL canSeek = generation != context->seekGeneration &&
+            (available >= needed || atomic_load_explicit(&context->decodingComplete, memory_order_acquire));
+        BOOL fadeOut = canSeek && !context->fadedOutForSeek;
+        BOOL fadeIn = canSeek && context->fadedOutForSeek;
+        if (fadeIn) {
+            context->frameIndex = targetFrame;
+            context->seekGeneration = generation;
+            if (converter) AudioConverterReset(converter);
+        }
+
         AudioBufferList *bufferToFill = (sourceChannelCount == outputChannelCount) ? ioData : context->inputScratch;
 
         if (!converter) {
@@ -458,13 +515,27 @@ static OSStatus sConverterInputCallback(
             }
         }
 
+        // Fade across two render buffers to remove the discontinuity at a seek.
+        // All work uses existing buffers and performs no render-thread allocation.
+        if (fadeOut || fadeIn) {
+            for (UInt32 b = 0; b < outputChannelCount; b++) {
+                float *samples = ioData->mBuffers[b].mData;
+                for (UInt32 f = 0; f < frameCount; f++) {
+                    float ramp = frameCount > 1 ? (float)f / (frameCount - 1) : 1;
+                    samples[f] *= fadeIn ? ramp : 1 - ramp;
+                }
+            }
+        }
+        context->fadedOutForSeek = fadeOut;
+
         if (outInfo) {
+            outInfo->seekGeneration = context->seekGeneration;
             double sampleRate = context->sampleRate;
 
             if (context->frameIndex < 0) {
                 outInfo->status = HugPlaybackStatusWaiting;
                 outInfo->timeElapsed   = context->frameIndex  / sampleRate;
-                outInfo->timeRemaining = context->totalFrames / sampleRate;
+                outInfo->timeRemaining = (context->totalFrames - context->initialFrame) / sampleRate;
 
             } else if (context->frameIndex >= context->totalFrames) {
                 outInfo->status = HugPlaybackStatusFinished;
@@ -485,6 +556,25 @@ static OSStatus sConverterInputCallback(
     _completionHandler = completionHandler;
 
     return YES;
+}
+
+
+- (UInt32) seekToTime:(NSTimeInterval)time
+{
+    if (!_context || !_inputBlock || _error || !isfinite(time) || _context->totalFrames <= 0) return 0;
+
+    UInt32 frame = (UInt32)MIN(MAX(0, time * _context->sampleRate), _context->totalFrames - 1);
+    uint64_t previous = atomic_load_explicit(&_context->seekRequest, memory_order_relaxed);
+    UInt32 generation = (UInt32)(previous >> 32) + 1;
+    if (!generation) generation = 1;
+    atomic_store_explicit(&_context->seekRequest, ((uint64_t)generation << 32) | frame, memory_order_release);
+    return generation;
+}
+
+
+- (NSTimeInterval) duration
+{
+    return _context && _context->sampleRate > 0 ? _context->totalFrames / _context->sampleRate : 0;
 }
 
 

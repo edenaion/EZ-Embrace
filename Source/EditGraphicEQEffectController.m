@@ -2,6 +2,7 @@
 // MIT License (or) 1-clause BSD License
 
 #import "EditGraphicEQEffectController.h"
+#import "InterfaceAppearance.h"
 #import "Effect.h"
 #import "EffectAdditions.h"
 #import "EffectType.h"
@@ -58,16 +59,19 @@
     // Adjust subviews (we can't do this in Interface Builder as the NSVisualEffectView
     // obscures the toolbar
     //
+    [self moveToolbarControlsIntoContentView];
     [[self backgroundView] setFrame:[[window contentView] bounds]];
 
     CGRect eqViewFrame = [[self backgroundView] bounds];
     eqViewFrame.size.height -= 34;
     [[self graphicEQView] setFrame:eqViewFrame];
+    [InterfaceAppearance installInWindow:window];
 }
 
 
 - (void) reloadData
 {
+    [super reloadData];
     [_graphicEQView reloadData];
 }
 
@@ -77,6 +81,7 @@
 - (IBAction) flatten:(id)sender
 {
     [_graphicEQView flatten];
+    [super reloadData];
 }
 
 

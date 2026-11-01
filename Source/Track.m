@@ -9,6 +9,7 @@
 #import "WorkerService.h"
 #import "HugError.h"
 
+#import <AppKit/AppKit.h>
 #import <AVFoundation/AVFoundation.h>
 
 NSString * const TrackDidModifyTitleNotificationName       = @"TrackDidModifyTitleNotificationName";
@@ -22,6 +23,37 @@ static NSString * const sStopsAfterPlayingKey = @"stopsAfterPlaying";
 static NSString * const sIgnoresAutoGapKey    = @"ignoresAutoGap";
 static NSString * const sStatusKey            = @"trackStatus";
 static NSString * const sPlayedTimeKey        = @"playedTime";
+static NSString * const sCueStartTimeKey      = @"cueStartTime";
+static NSString * const sGenreHighlightOverrideKey = @"genreHighlightOverride";
+static NSString * const sSetListColorOverrideKey = @"setListColorOverride";
+static NSString * const sLibraryIdentifierKey = @"libraryIdentifier";
+static NSString * const sSongTypeOverridesDefaultsKey = @"songTypeOverrides";
+static NSString * const sSongRowColorOverridesDefaultsKey = @"songRowColorOverrides";
+static NSString * const sAutomaticRowColorMarker = @"automatic";
+
+
+static NSColor *sSetListColorFromStateValue(id value)
+{
+    if (![value isKindOfClass:NSArray.class] || [value count] != 4) return nil;
+    CGFloat components[4] = {};
+    for (NSUInteger index = 0; index < 4; index++) {
+        id component = value[index];
+        if (![component respondsToSelector:@selector(doubleValue)]) return nil;
+        double number = [component doubleValue];
+        if (!isfinite(number) || number < 0 || number > 1) return nil;
+        components[index] = number;
+    }
+    return [NSColor colorWithSRGBRed:components[0] green:components[1]
+                                blue:components[2] alpha:components[3]];
+}
+
+
+static NSArray<NSNumber *> *sStateValueFromSetListColor(NSColor *color)
+{
+    NSColor *rgb = [color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    if (!rgb) return nil;
+    return @[ @(rgb.redComponent), @(rgb.greenComponent), @(rgb.blueComponent), @(rgb.alphaComponent) ];
+}
 
 
 @interface Track ()
@@ -40,6 +72,7 @@ static NSString * const sPlayedTimeKey        = @"playedTime";
 @property (nonatomic) NSData *overviewData;
 @property (nonatomic) double  overviewRate;
 @property (nonatomic) NSInteger databaseID;
+@property (nonatomic, copy) NSString *libraryIdentifier;
 @property (nonatomic) NSInteger energyLevel;
 @property (nonatomic) NSString *genre;
 @property (nonatomic) NSString *initialKey;
@@ -60,9 +93,109 @@ static NSString * const sPlayedTimeKey        = @"playedTime";
     BOOL            _dirty;
     BOOL            _cleared;
     BOOL            _priorityAnalysisRequested;
+    BOOL            _updatingState;
+    BOOL            _observesLibraryMetadata;
 }
 
 @dynamic playDuration, silenceAtStart, silenceAtEnd, tonality;
+
+
+- (NSArray<NSString *> *) _songIdentityKeys
+{
+    NSMutableArray<NSString *> *keys = [NSMutableArray array];
+    if (_libraryIdentifier.length) {
+        [keys addObject:[@"music:" stringByAppendingString:_libraryIdentifier]];
+    }
+    if (_databaseID) {
+        [keys addObject:[NSString stringWithFormat:@"database:%ld", (long)_databaseID]];
+    }
+    if (_externalURL.isFileURL) {
+        NSURL *standardURL = [[_externalURL URLByStandardizingPath] URLByResolvingSymlinksInPath];
+        if (standardURL.path.length) {
+            [keys addObject:[@"file:" stringByAppendingString:standardURL.path]];
+        }
+    }
+    return keys;
+}
+
+
+- (void) _saveSongTypeOverride
+{
+    if (_updatingState) return;
+    NSArray<NSString *> *keys = [self _songIdentityKeys];
+    if (!keys.count) return;
+
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSMutableDictionary *saved = [[defaults dictionaryForKey:sSongTypeOverridesDefaultsKey] mutableCopy] ?:
+        [NSMutableDictionary dictionary];
+    for (NSString *key in keys) {
+        saved[key] = @(_genreHighlightOverride);
+    }
+    [defaults setObject:saved forKey:sSongTypeOverridesDefaultsKey];
+}
+
+
+- (void) _applySavedSongTypeOverride
+{
+    NSDictionary *saved = [NSUserDefaults.standardUserDefaults dictionaryForKey:sSongTypeOverridesDefaultsKey];
+    NSNumber *value = nil;
+    for (NSString *key in [self _songIdentityKeys]) {
+        value = saved[key];
+        if (value) break;
+    }
+
+    if (value) {
+        NSInteger override = value.integerValue;
+        if (override >= TrackGenreHighlightOverrideAutomatic &&
+            override <= TrackGenreHighlightOverrideNormal) {
+            self.genreHighlightOverride = override;
+            [self _saveSongTypeOverride];
+        }
+    } else if (_genreHighlightOverride != TrackGenreHighlightOverrideAutomatic) {
+        // Migrate an existing per-entry correction to the stable song identity.
+        [self _saveSongTypeOverride];
+    }
+}
+
+
+- (void) _saveSongRowColorOverride
+{
+    if (_updatingState) return;
+    NSArray<NSString *> *keys = [self _songIdentityKeys];
+    if (!keys.count) return;
+
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSMutableDictionary *saved = [[defaults dictionaryForKey:sSongRowColorOverridesDefaultsKey] mutableCopy] ?:
+        [NSMutableDictionary dictionary];
+    NSArray<NSNumber *> *value = sStateValueFromSetListColor(_setListColorOverride);
+    for (NSString *key in keys) {
+        saved[key] = value ?: sAutomaticRowColorMarker;
+    }
+    [defaults setObject:saved forKey:sSongRowColorOverridesDefaultsKey];
+}
+
+
+- (void) _applySavedSongRowColorOverride
+{
+    NSDictionary *saved = [NSUserDefaults.standardUserDefaults dictionaryForKey:sSongRowColorOverridesDefaultsKey];
+    id value = nil;
+    for (NSString *key in [self _songIdentityKeys]) {
+        value = saved[key];
+        if (value) break;
+    }
+
+    NSColor *color = sSetListColorFromStateValue(value);
+    if ([value isEqual:sAutomaticRowColorMarker]) {
+        self.setListColorOverride = nil;
+        [self _saveSongRowColorOverride];
+    } else if (color) {
+        self.setListColorOverride = color;
+        [self _saveSongRowColorOverride];
+    } else if (_setListColorOverride) {
+        // Migrate an existing per-entry row color to the stable song identity.
+        [self _saveSongRowColorOverride];
+    }
+}
 
 
 static NSURL *sGetStateDirectoryURL()
@@ -132,7 +265,11 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     if ([key isEqualToString:@"playDuration"]) {
         affectingKeys = @[ @"duration", @"decodedDuration", @"stopTime", @"startTime" ];
     } else if ([key isEqualToString:@"silenceAtStart"]) {
-        affectingKeys = @[ @"overviewData", @"startTime" ];
+        affectingKeys = @[ @"overviewData", @"startTime", @"cueStartTime" ];
+    } else if ([key isEqualToString:@"cueOffset"]) {
+        affectingKeys = @[ @"cueStartTime", @"startTime", @"playDuration" ];
+    } else if ([key isEqualToString:@"queuedPlayDuration"]) {
+        affectingKeys = @[ @"playDuration", @"cueOffset" ];
     } else if ([key isEqualToString:@"silenceAtEnd"]) {
         affectingKeys = @[ @"overviewData", @"stopTime" ];
     } else if ([key isEqualToString:@"tonality"]) {
@@ -270,6 +407,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
 
     NSMutableDictionary *state = [NSMutableDictionary dictionary];
     [self _writeStateToDictionary:state];
+    [state removeObjectForKey:sCueStartTimeKey];
 
     Track *result = [[[self class] alloc] _initWithUUID:UUID state:state];
     result->_dirty = YES;
@@ -284,6 +422,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
 
 - (void) _updateState:(NSDictionary *)state initialLoad:(BOOL)initialLoad
 {
+    _updatingState = YES;
     BOOL postTitleChanged = NO;
     BOOL postDurationChanged = NO;
 
@@ -294,6 +433,10 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
         if ([key isEqualToString:TrackKeyError] && [newValue isKindOfClass:[NSData class]]) {
             NSError *unarchiveError = nil;
             newValue = [NSKeyedUnarchiver unarchivedObjectOfClass:[NSError class] fromData:newValue error:&unarchiveError];
+        }
+        if ([key isEqualToString:sSetListColorOverrideKey]) {
+            newValue = sSetListColorFromStateValue(newValue);
+            if (!newValue) continue;
         }
         
         if (![oldValue isEqual:newValue]) {
@@ -312,7 +455,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
                 postTitleChanged = YES;
             }
             
-            if ([@[ @"duration", @"decodedDuration", @"startTime", @"endTime" ] containsObject:key]) {
+            if ([@[ @"duration", @"decodedDuration", @"startTime", @"stopTime", @"endTime", sCueStartTimeKey ] containsObject:key]) {
                 postDurationChanged = YES;
             }
         }
@@ -322,7 +465,10 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     NSNumber *startTime    = [state objectForKey:TrackKeyStartTime];
     NSNumber *stopTime     = [state objectForKey:TrackKeyStopTime];
 
-    if (overviewData || startTime || stopTime) {
+    _updatingState = NO;
+    [self setCueStartTime:_cueStartTime];
+
+    if (overviewData || startTime || stopTime || [state objectForKey:sCueStartTimeKey]) {
         [self _calculateSilence];
     }
     
@@ -367,6 +513,12 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     if (_trackLabel)     [state setObject:@(_trackLabel)        forKey:sLabelKey];
     if (_trackStatus)    [state setObject:@(_trackStatus)       forKey:sStatusKey];
     if (_playedTime)     [state setObject:@(_playedTime)        forKey:sPlayedTimeKey];
+    if (_cueStartTime)   [state setObject:@(_cueStartTime)      forKey:sCueStartTimeKey];
+    if (_genreHighlightOverride != TrackGenreHighlightOverrideAutomatic) {
+        [state setObject:@(_genreHighlightOverride) forKey:sGenreHighlightOverrideKey];
+    }
+    NSArray<NSNumber *> *setListColor = sStateValueFromSetListColor(_setListColorOverride);
+    if (setListColor) [state setObject:setListColor forKey:sSetListColorOverrideKey];
 
     if (_stopsAfterPlaying) {
         [state setObject:@YES forKey:sStopsAfterPlayingKey];
@@ -384,6 +536,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     if (_comments)         [state setObject:_comments             forKey:TrackKeyComments];
     if (_composer)         [state setObject:_composer             forKey:TrackKeyComposer];
     if (_databaseID)       [state setObject:@(_databaseID)        forKey:TrackKeyDatabaseID];
+    if (_libraryIdentifier) [state setObject:_libraryIdentifier    forKey:sLibraryIdentifierKey];
     if (_decodedDuration)  [state setObject:@(_decodedDuration)   forKey:TrackKeyDecodedDuration];
     if (_duration)         [state setObject:@(_duration)          forKey:TrackKeyDuration];
     if (_energyLevel)      [state setObject:@(_energyLevel)       forKey:TrackKeyEnergyLevel];
@@ -621,8 +774,9 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
         NSInteger startIndex = 0;
         NSInteger sampleCount = 0;
 
-        if (_startTime) {
-            startIndex = (_overviewRate * _startTime);
+        NSTimeInterval audibleStart = _startTime + [self cueOffset];
+        if (audibleStart) {
+            startIndex = (_overviewRate * audibleStart);
         }
 
         for (NSInteger i = startIndex; i < length; i++) {
@@ -708,6 +862,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
             [strongSelf _updateState:dictionary initialLoad:NO];
             
             if (command == WorkerTrackCommandReadMetadata) {
+                [strongSelf _readMetadataViaManagerWithFileURL:[strongSelf externalURL]];
                 [[ScriptsManager sharedInstance] callMetadataAvailableWithTrack:strongSelf];
             }
         });
@@ -726,6 +881,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     if (pasteboardMetadata) {
         NSString      *title      = [pasteboardMetadata title];
         NSString      *artist     = [pasteboardMetadata artist];
+        NSString      *genre      = [pasteboardMetadata genre];
         NSTimeInterval duration   = [pasteboardMetadata duration];
         NSInteger      databaseID = [pasteboardMetadata databaseID];
 
@@ -735,6 +891,7 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
         if (!_artist)     [self setArtist:artist];
         if (!_duration)   [self setDuration:duration];
         if (!_databaseID) [self setDatabaseID:databaseID];
+        if (genre)        [self setGenre:genre];
     }
 
     if ([[MusicAppManager sharedInstance] didParseLibrary]) {
@@ -745,25 +902,31 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
         
         EmbraceLog(@"Track", @"%@ has library metadata: startTime=%g, stopTime=%g", self, startTime, stopTime);
         
-        [self setStartTime:startTime];
-        [self setStopTime: stopTime];
+        if (libraryMetadata) {
+            [self setStartTime:startTime];
+            [self setStopTime: stopTime];
+            [self setGenre:libraryMetadata.genre ?: @""];
+            if (libraryMetadata.persistentIdentifier.length) {
+                [self setLibraryIdentifier:libraryMetadata.persistentIdentifier];
+            }
+            [self setCueStartTime:_cueStartTime];
+        }
     }
+
+    [self _applySavedSongTypeOverride];
+    [self _applySavedSongRowColorOverride];
     
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_handleDidUpdateLibraryMetadata:) name:MusicAppManagerDidUpdateLibraryMetadataNotification object:nil];
+    if (!_observesLibraryMetadata) {
+        _observesLibraryMetadata = YES;
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_handleDidUpdateLibraryMetadata:)
+            name:MusicAppManagerDidUpdateLibraryMetadataNotification object:nil];
+    }
 }
 
 
 - (void) _handleDidUpdateLibraryMetadata:(NSNotification *)note
 {
-    MusicAppLibraryMetadata *metadata = [[MusicAppManager sharedInstance] libraryMetadataForFileURL:[self externalURL]];
-    
-    NSTimeInterval startTime = [metadata startTime];
-    NSTimeInterval stopTime  = [metadata stopTime];
-    
-    EmbraceLog(@"Track", @"%@ updated startTime=%g, stopTime=%g with %@", self, startTime, stopTime, metadata);
-    
-    [self setStartTime:startTime];
-    [self setStopTime: stopTime];
+    [self _readMetadataViaManagerWithFileURL:[self externalURL]];
 }
 
 
@@ -847,6 +1010,17 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
 }
 
 
+- (void) setGenre:(NSString *)genre
+{
+    genre = [genre precomposedStringWithCanonicalMapping];
+    if ((_genre != genre) && ![_genre isEqualToString:genre]) {
+        _genre = [genre copy];
+        _dirty = YES;
+        [self _saveStateImmediately:NO];
+    }
+}
+
+
 - (void) setTrackLabel:(TrackLabel)trackLabel
 {
     if (_trackLabel != trackLabel) {
@@ -888,6 +1062,65 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
 }
 
 
+- (void) setGenreHighlightOverride:(TrackGenreHighlightOverride)genreHighlightOverride
+{
+    if (genreHighlightOverride < TrackGenreHighlightOverrideAutomatic ||
+        genreHighlightOverride > TrackGenreHighlightOverrideNormal) {
+        genreHighlightOverride = TrackGenreHighlightOverrideAutomatic;
+    }
+
+    if (_genreHighlightOverride != genreHighlightOverride) {
+        _genreHighlightOverride = genreHighlightOverride;
+        _dirty = YES;
+        [self _saveStateImmediately:NO];
+        [self _saveSongTypeOverride];
+    }
+}
+
+
+- (void) setLibraryIdentifier:(NSString *)libraryIdentifier
+{
+    if ((_libraryIdentifier != libraryIdentifier) &&
+        ![_libraryIdentifier isEqualToString:libraryIdentifier]) {
+        _libraryIdentifier = [libraryIdentifier copy];
+        if (!_updatingState) {
+            _dirty = YES;
+            [self _saveStateImmediately:NO];
+            [self _applySavedSongTypeOverride];
+            [self _applySavedSongRowColorOverride];
+        }
+    }
+}
+
+
+- (BOOL) isSameLibrarySongAsTrack:(Track *)track
+{
+    if (!track) return NO;
+    NSSet<NSString *> *ownKeys = [NSSet setWithArray:[self _songIdentityKeys]];
+    if (!ownKeys.count) return NO;
+    for (NSString *key in [track _songIdentityKeys]) {
+        if ([ownKeys containsObject:key]) return YES;
+    }
+    return NO;
+}
+
+
+- (void) setSetListColorOverride:(NSColor *)setListColorOverride
+{
+    NSColor *rgb = [setListColorOverride colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    if (rgb) {
+        rgb = [NSColor colorWithSRGBRed:rgb.redComponent green:rgb.greenComponent
+                                  blue:rgb.blueComponent alpha:1];
+    }
+    if ((_setListColorOverride != rgb) && ![_setListColorOverride isEqual:rgb]) {
+        _setListColorOverride = [rgb copy];
+        _dirty = YES;
+        [self _saveStateImmediately:NO];
+        [self _saveSongRowColorOverride];
+    }
+}
+
+
 - (void) setError:(NSError *)error
 {
     if (_error != error) {
@@ -918,6 +1151,45 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     NSTimeInterval duration = _decodedDuration ? _decodedDuration : _duration;
     NSTimeInterval stopTime = _stopTime ? _stopTime : duration;
     return stopTime - _startTime;
+}
+
+
+- (void) setCueStartTime:(NSTimeInterval)cueStartTime
+{
+    if (!isfinite(cueStartTime) || cueStartTime < 0) cueStartTime = 0;
+    NSTimeInterval duration = [self playDuration];
+    if (!_updatingState && duration > 0 && cueStartTime > 0) {
+        if (cueStartTime >= _startTime + duration) cueStartTime = 0;
+        else cueStartTime = MAX(_startTime, cueStartTime);
+    }
+    if (_cueStartTime == cueStartTime) return;
+    _cueStartTime = cueStartTime;
+    _cueRevision++;
+    [self _invalidateSilence];
+    _dirty = YES;
+    if (!_updatingState) {
+        [self _saveStateImmediately:YES];
+        [[NSNotificationCenter defaultCenter] postNotificationName:TrackDidModifyDurationNotificationName object:self];
+    }
+}
+
+
+- (NSTimeInterval) cueOffset
+{
+    NSTimeInterval duration = [self playDuration];
+    NSTimeInterval offset = MAX(0, _cueStartTime - _startTime);
+    return isfinite(offset) && offset < duration ? offset : 0;
+}
+
+
+- (NSTimeInterval) queuedPlayDuration
+{
+    return MAX(0, [self playDuration] - [self cueOffset]);
+}
+
+- (void) clearCueForPlaybackRevision:(NSUInteger)revision
+{
+    if (revision == _cueRevision) self.cueStartTime = 0;
 }
 
 

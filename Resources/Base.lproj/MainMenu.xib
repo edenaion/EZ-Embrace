@@ -127,12 +127,6 @@
                                     <action selector="saveSetlist:" target="494" id="KHx-V9-rYa"/>
                                 </connections>
                             </menuItem>
-                            <menuItem title="Export to Music…" id="112">
-                                <modifierMask key="keyEquivalentModifierMask"/>
-                                <connections>
-                                    <action selector="exportSetlist:" target="494" id="SGv-aQ-4hz"/>
-                                </connections>
-                            </menuItem>
                         </items>
                     </menu>
                 </menuItem>
@@ -464,6 +458,12 @@ CA
                                 <modifierMask key="keyEquivalentModifierMask" option="YES" command="YES"/>
                                 <connections>
                                     <action selector="showCurrentTrack:" target="494" id="Wp8-ec-Fio"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Music library" keyEquivalent="4" id="EZM-lib-win">
+                                <modifierMask key="keyEquivalentModifierMask" option="YES" command="YES"/>
+                                <connections>
+                                    <action selector="showMusicLibrary:" target="494" id="EZM-lib-act"/>
                                 </connections>
                             </menuItem>
                             <menuItem title="Equalizer" keyEquivalent="e" id="cOX-sn-C2h">

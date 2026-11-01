@@ -4,8 +4,10 @@
 #import <Foundation/Foundation.h>
 
 extern NSString * const MusicAppManagerDidUpdateLibraryMetadataNotification;
+extern NSString * const MusicAppManagerDidUpdateBrowserNotification;
 
 @class MusicAppLibraryMetadata, MusicAppPasteboardMetadata, MusicAppPasteboardParseResult;
+@class MusicLibrarySnapshot;
 
 
 @interface MusicAppManager : NSObject
@@ -14,6 +16,16 @@ extern NSString * const MusicAppManagerDidUpdateLibraryMetadataNotification;
 
 - (MusicAppLibraryMetadata *) libraryMetadataForFileURL:(NSURL *)url;
 @property (nonatomic, readonly) BOOL didParseLibrary;
+@property (nonatomic, readonly) MusicLibrarySnapshot *browserSnapshot;
+@property (nonatomic, readonly) NSString *browserError;
+@property (nonatomic, readonly) BOOL browserLoading;
+@property (nonatomic, readonly) NSDate *lastLibraryRefreshDate;
+@property (nonatomic, readonly) NSDate *lastMusicLibraryBackupDate;
+@property (nonatomic, readonly) NSString *musicLibraryBackupError;
+@property (nonatomic, readonly) BOOL musicLibraryBackupInProgress;
+@property (nonatomic, readonly) NSURL *musicLibraryBackupDirectoryURL;
+- (void) refreshBrowser;
+- (void) backupMusicLibraryNow;
 
 - (MusicAppPasteboardParseResult *) parsePasteboard:(NSPasteboard *)pasteboard;
 
@@ -35,6 +47,8 @@ extern NSString * const MusicAppManagerDidUpdateLibraryMetadataNotification;
 @interface MusicAppLibraryMetadata : NSObject
 @property (nonatomic) NSTimeInterval startTime;
 @property (nonatomic) NSTimeInterval stopTime;
+@property (nonatomic, copy) NSString *genre;
+@property (nonatomic, copy) NSString *persistentIdentifier;
 @end
 
 
@@ -45,5 +59,6 @@ extern NSString * const MusicAppManagerDidUpdateLibraryMetadataNotification;
 @property (nonatomic, copy) NSString *location;
 @property (nonatomic, copy) NSString *title;
 @property (nonatomic, copy) NSString *artist;
+@property (nonatomic, copy) NSString *genre;
 @property (nonatomic) NSTimeInterval duration;
 @end

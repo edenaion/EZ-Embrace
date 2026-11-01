@@ -37,26 +37,6 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "55708C9D18B8A98D0059110C"
-               BuildableName = "EscapePodTests.xctest"
-               BlueprintName = "EscapePodTests"
-               ReferencedContainer = "container:Embrace.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "5559E62B18DFD42600D61019"
-               BuildableName = "EmbraceCrashPadTests.xctest"
-               BlueprintName = "EmbraceCrashPadTests"
-               ReferencedContainer = "container:Embrace.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

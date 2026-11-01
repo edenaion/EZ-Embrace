@@ -2,12 +2,13 @@
 // MIT License (or) 1-clause BSD License
 
 #import <Foundation/Foundation.h>
+#import "TrackGenre.h"
 
 extern NSString * const TrackDidModifyTitleNotificationName;
 extern NSString * const TrackDidModifyExternalURLNotificationName;
 extern NSString * const TrackDidModifyDurationNotificationName;
 
-@class TrackAnalyzer;
+@class NSColor, TrackAnalyzer;
 
 typedef NS_ENUM(NSInteger, TrackStatus) {
     TrackStatusQueued    = 0,  // Track is queued
@@ -66,8 +67,18 @@ typedef NS_ENUM(NSInteger, TrackLabel) {
 @property (nonatomic) TrackStatus trackStatus;
 @property (nonatomic) BOOL stopsAfterPlaying;
 @property (nonatomic) BOOL ignoresAutoGap;
+@property (nonatomic) TrackGenreHighlightOverride genreHighlightOverride;
+@property (nonatomic, copy) NSColor *setListColorOverride;
+- (BOOL) isSameLibrarySongAsTrack:(Track *)track;
 
 @property (nonatomic) NSTimeInterval expectedDuration;
+
+// Single-use absolute file position. Zero uses the existing file or Music trim.
+@property (nonatomic) NSTimeInterval cueStartTime;
+@property (nonatomic, readonly) NSTimeInterval cueOffset;
+@property (nonatomic, readonly) NSTimeInterval queuedPlayDuration;
+@property (nonatomic, readonly) NSUInteger cueRevision;
+- (void) clearCueForPlaybackRevision:(NSUInteger)revision;
 
 @property (nonatomic) NSTimeInterval estimatedEndTime;
 @property (nonatomic) NSError *error;

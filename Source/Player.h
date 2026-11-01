@@ -2,6 +2,7 @@
 // MIT License (or) 1-clause BSD License
 
 #import <Foundation/Foundation.h>
+#import "Preferences.h"
 
 @protocol PlayerListener, PlayerTrackProvider;
 @class Player, Track, Effect, HugAudioDevice, HugMeterData;
@@ -26,6 +27,9 @@ typedef NS_ENUM(NSInteger, PlayerInterruptionReason) {
 
 
 extern volatile NSInteger PlayerShouldUseCrashPad;
+extern NSString * const PlayerEffectsDidChangeNotification;
+// Posted synchronously before main output is configured; observers finish conflicting output teardown before returning.
+extern NSString * const PlayerWillConfigureOutputNotification;
 
 @interface Player : NSObject
 
@@ -35,10 +39,16 @@ extern volatile NSInteger PlayerShouldUseCrashPad;
 - (void) hardSkip;
 - (void) hardStop;
 
+// Rejects a stale gesture if playback has advanced to another track.
+- (BOOL) seekToTime:(NSTimeInterval)time forTrack:(Track *)track;
+
 @property (nonatomic) double volume;
 
 @property (nonatomic, strong) NSArray<Effect *> *effects;
 - (void) saveEffectState;
+- (BOOL) setParametricEQEnabled:(BOOL)enabled;
+- (BOOL) setEqualizerEnabled:(BOOL)enabled type:(EqualizerType)type;
+- (BOOL) selectEqualizerType:(EqualizerType)type;
 
 @property (nonatomic) BOOL preventNextTrack;
 
