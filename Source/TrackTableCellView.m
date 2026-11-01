@@ -49,6 +49,34 @@
     return view;
 }
 
+- (void) _positionPanel:(NSColorPanel *)panel nearMouseLocation:(NSPoint)mouseLocation
+{
+    NSScreen *targetScreen = NSScreen.mainScreen;
+    for (NSScreen *screen in NSScreen.screens) {
+        if (NSPointInRect(mouseLocation, screen.frame)) {
+            targetScreen = screen;
+            break;
+        }
+    }
+
+    NSRect visibleFrame = targetScreen.visibleFrame;
+    NSRect panelFrame = panel.frame;
+    CGFloat gap = 10;
+    CGFloat x = mouseLocation.x + gap;
+    CGFloat y = mouseLocation.y - NSHeight(panelFrame) - gap;
+
+    if (x + NSWidth(panelFrame) > NSMaxX(visibleFrame)) {
+        x = mouseLocation.x - NSWidth(panelFrame) - gap;
+    }
+    if (y < NSMinY(visibleFrame)) {
+        y = mouseLocation.y + gap;
+    }
+
+    x = MIN(MAX(x, NSMinX(visibleFrame)), NSMaxX(visibleFrame) - NSWidth(panelFrame));
+    y = MIN(MAX(y, NSMinY(visibleFrame)), NSMaxY(visibleFrame) - NSHeight(panelFrame));
+    [panel setFrameOrigin:NSMakePoint(round(x), round(y))];
+}
+
 - (void) showForTrack:(Track *)track
 {
     if (!track) return;
@@ -57,14 +85,16 @@
     [[NSNotificationCenter defaultCenter] removeObserver:self name:NSWindowWillCloseNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_colorPanelWillClose:)
         name:NSWindowWillCloseNotification object:panel];
+    BOOL hasOverride = track.setListColorOverride != nil;
     panel.showsAlpha = NO;
     panel.mode = NSColorPanelModeWheel;
-    panel.target = self;
-    panel.action = @selector(_colorChanged:);
     panel.accessoryView = [self _accessoryView];
     panel.color = track.setListColorOverride ?: [[Preferences sharedInstance] upcomingOtherGenreColor];
-    _automaticButton.enabled = track.setListColorOverride != nil;
+    panel.target = self;
+    panel.action = @selector(_colorChanged:);
+    _automaticButton.enabled = hasOverride;
     panel.title = [NSString stringWithFormat:NSLocalizedString(@"Track Color: %@", nil), track.title ?: @""];
+    [self _positionPanel:panel nearMouseLocation:NSEvent.mouseLocation];
     [panel makeKeyAndOrderFront:nil];
 }
 
@@ -253,7 +283,7 @@
     _colorButton.bordered = NO;
     _colorButton.title = @"";
     _colorButton.imagePosition = NSImageOnly;
-    _colorButton.image = [NSImage imageWithSystemSymbolName:@"paintpalette.fill"
+    _colorButton.image = [NSImage imageWithSystemSymbolName:@"circle.fill"
                                   accessibilityDescription:NSLocalizedString(@"Choose track color", nil)];
     _colorButton.target = self;
     _colorButton.action = @selector(_colorButtonClicked:);
