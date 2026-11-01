@@ -3,9 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-version="4.5.0"
+version="4.6.0"
 label="${RELEASE_LABEL:-$(date +%y%m%d-%H%M%S)}"
-output="${OUTPUT_DIR:-builds/v4.5.0/mac/release-${label}}"
+output="${OUTPUT_DIR:-builds/v4.6.0/mac/release-${label}}"
 derived="$output/derived"
 app="$output/EZ-Embrace.app"
 package="$output/EZ-Embrace-${version}.pkg"

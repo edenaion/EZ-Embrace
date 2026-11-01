@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${EZ_EMBRACE_SIGN_IDENTITY:?Set a local Developer ID Application signing identity}"
-version="4.5.0"
+version="4.6.0"
 output="builds/v${version}/mac/candidate"
 derived="builds/v${version}/mac/candidate-derived"
 mkdir -p "$output"
