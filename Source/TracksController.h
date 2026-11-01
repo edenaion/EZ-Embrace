@@ -32,6 +32,9 @@ extern NSString *EmbraceQueuedTrackPasteboardType;
 - (void) toggleIgnoreAutoGap:(id)sender;
 - (void) toggleMarkAsPlayed:(id)sender;
 - (void) toggleModernSong:(id)sender;
+- (void) useAutomaticSongType:(id)sender;
+- (void) markAsTraditionalSong:(id)sender;
+- (void) markAsModernSong:(id)sender;
 
 - (void) detectDuplicates;
 

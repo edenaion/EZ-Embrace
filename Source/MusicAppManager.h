@@ -48,6 +48,7 @@ extern NSString * const MusicAppManagerDidUpdateBrowserNotification;
 @property (nonatomic) NSTimeInterval startTime;
 @property (nonatomic) NSTimeInterval stopTime;
 @property (nonatomic, copy) NSString *genre;
+@property (nonatomic, copy) NSString *persistentIdentifier;
 @end
 
 

@@ -47,6 +47,11 @@ NSArray<Effect *> *EmbraceEffectsBySettingParametricEQEnabled(NSArray<Effect *> 
 {
     return effects;
 }
+NSArray<Effect *> *EmbraceEffectsWithSingleParametricEQ(NSArray<Effect *> *effects, BOOL ensurePresent)
+{
+    return effects;
+}
+void EmbraceParametricEQSetAutomaticFlatResponse(AUAudioUnit *audioUnit, BOOL automaticFlat) {}
 NSString * const EmbraceMappedEffect10BandEQ = @"EmbraceGraphicEQ10";
 NSString * const EmbraceEffectParametricEQ = @"EmbraceParametricEQ";
 NSString *EmbraceEqualizerEffectName(EqualizerType type)
@@ -107,6 +112,8 @@ Effect *EmbraceEqualizerEffectWithState(NSDictionary *state, EqualizerType type)
 - (NSError *)error { return nil; }
 - (double)trackLoudness { return -18; }
 - (double)trackPeak { return 0.5; }
+- (NSString *)genre { return @"Tango"; }
+- (TrackGenreHighlightOverride)genreHighlightOverride { return TrackGenreHighlightOverrideAutomatic; }
 - (TrackStatus)trackStatus { return _testTrackStatus; }
 - (void)setTrackStatus:(TrackStatus)value { _testTrackStatus = value; }
 - (BOOL)stopsAfterPlaying { return _testStopsAfterPlaying; }

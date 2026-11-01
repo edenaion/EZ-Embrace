@@ -123,6 +123,8 @@ int main(void)
                                [NSString stringWithFormat:@"EZ-Embrace-track-cues-%@", NSUUID.UUID.UUIDString]];
         sSupportDirectory = directory;
         sAppDelegate = [AppDelegate new];
+        [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"songTypeOverrides"];
+        [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"songRowColorOverrides"];
         NSError *error = nil;
         [[NSFileManager defaultManager] createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:&error];
         Check(error == nil, @"create isolated support directory");
@@ -137,9 +139,21 @@ int main(void)
         track.genreHighlightOverride = TrackGenreHighlightOverrideGreen;
         Check(track.genreHighlightOverride == TrackGenreHighlightOverrideGreen,
             @"track accepts manual green highlight override");
+        Track *sameSong = MakeTrack([NSURL fileURLWithPath:fixturePath]);
+        Check(sameSong.genreHighlightOverride == TrackGenreHighlightOverrideGreen,
+            @"a new Set List entry for the same song inherits its saved song type");
+        sameSong.genreHighlightOverride = TrackGenreHighlightOverrideNormal;
+        Track *laterSetEntry = MakeTrack([NSURL fileURLWithPath:fixturePath]);
+        Check(laterSetEntry.genreHighlightOverride == TrackGenreHighlightOverrideNormal,
+            @"traditional Tango correction survives a later Set List addition");
         track.setListColorOverride = [NSColor colorWithSRGBRed:0.20 green:0.55 blue:0.85 alpha:0.40];
         Check(fabs(track.setListColorOverride.alphaComponent - 1) < 0.001,
             @"per-track cosmetic color stores as an opaque Set List background");
+        Track *sameSongColor = MakeTrack([NSURL fileURLWithPath:fixturePath]);
+        NSColor *sameSongSavedColor = [sameSongColor.setListColorOverride colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+        Check(sameSongSavedColor && fabs(sameSongSavedColor.redComponent - 0.20) < 0.001 &&
+              fabs(sameSongSavedColor.greenComponent - 0.55) < 0.001,
+            @"a new Set List entry for the same song inherits its saved row color");
 
         CheckNear(track.cueStartTime, 0, @"new tracks default to cue zero");
         CheckNear(track.cueOffset, 0, @"zero cue has no imported-play offset");
@@ -191,8 +205,8 @@ int main(void)
         Track *reloaded = [Track trackWithUUID:track.UUID];
         Check(reloaded != nil && WaitUntilResolved(reloaded, 5), @"reload per-entry state through production initializer");
         CheckNear(reloaded.cueStartTime, 50, @"cue survives a persisted-state reload");
-        Check(reloaded.genreHighlightOverride == TrackGenreHighlightOverrideGreen,
-            @"genre highlight override survives persisted-state reload");
+        Check(reloaded.genreHighlightOverride == TrackGenreHighlightOverrideNormal,
+            @"latest song-level correction wins over an older per-entry value after reload");
         NSColor *reloadedColor = [reloaded.setListColorOverride colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
         Check(reloadedColor && fabs(reloadedColor.redComponent - 0.20) < 0.001 &&
               fabs(reloadedColor.greenComponent - 0.55) < 0.001 &&
@@ -204,12 +218,31 @@ int main(void)
         metadata.startTime = 20;
         metadata.stopTime = 90;
         metadata.genre = @"Tango- inst";
+        metadata.persistentIdentifier = @"TEST-MUSIC-ID-1";
         manager.testLibraryMetadata = metadata;
         [[NSNotificationCenter defaultCenter] postNotificationName:MusicAppManagerDidUpdateLibraryMetadataNotification object:manager];
         CheckNear(reloaded.startTime, 20, @"library metadata refresh updates imported trim start");
         CheckNear(reloaded.stopTime, 90, @"library metadata refresh updates imported trim stop");
         Check([reloaded.genre isEqualToString:@"Tango- inst"],
             @"library metadata refresh makes Music genre authoritative in Set List");
+        NSString *movedFixturePath = [directory stringByAppendingPathComponent:@"cue-fixture-moved.wav"];
+        [@"same Music song at a moved path" writeToFile:movedFixturePath atomically:YES
+            encoding:NSUTF8StringEncoding error:&error];
+        Check(error == nil, @"create moved-path identity fixture");
+        Track *movedLibrarySong = MakeTrack([NSURL fileURLWithPath:movedFixturePath]);
+        Check(movedLibrarySong.genreHighlightOverride == TrackGenreHighlightOverrideNormal,
+            @"Apple Music persistent ID keeps the traditional correction after a file move");
+        NSColor *movedSavedColor = [movedLibrarySong.setListColorOverride colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+        Check(movedSavedColor && fabs(movedSavedColor.blueComponent - 0.85) < 0.001,
+            @"Apple Music persistent ID keeps the saved row color after a file move");
+        movedLibrarySong.setListColorOverride = nil;
+        NSString *resetFixturePath = [directory stringByAppendingPathComponent:@"cue-fixture-reset.wav"];
+        [@"same Music song after row color reset" writeToFile:resetFixturePath atomically:YES
+            encoding:NSUTF8StringEncoding error:&error];
+        Check(error == nil, @"create row-color reset fixture");
+        Track *resetLibrarySong = MakeTrack([NSURL fileURLWithPath:resetFixturePath]);
+        Check(resetLibrarySong.setListColorOverride == nil,
+            @"reset row color remains automatic for a later Set List entry");
         [reloaded setValue:@"Electronic" forKey:@"genre"];
         [reloaded _readMetadataViaManagerWithFileURL:reloaded.externalURL];
         Check([reloaded.genre isEqualToString:@"Tango- inst"],
@@ -229,8 +262,8 @@ int main(void)
         Check(duplicate != nil && WaitUntilResolved(duplicate, 5), @"duplicate entry resolves independently");
         Check(![duplicate.UUID isEqual:reloaded.UUID], @"duplicate receives a unique entry UUID");
         CheckNear(duplicate.cueStartTime, 0, @"duplicate cue defaults to zero instead of copying single-use state");
-        Check([duplicate.setListColorOverride isEqual:reloaded.setListColorOverride],
-            @"duplicate keeps the source cosmetic color for reuse in another set");
+        Check(duplicate.setListColorOverride == nil && reloaded.setListColorOverride == nil,
+            @"duplicate respects the latest saved automatic row-color reset");
         NSString *duplicateStatePath = [directory stringByAppendingPathComponent:
                                         [NSString stringWithFormat:@"Tracks/%@.plist", duplicate.UUID.UUIDString]];
         NSDictionary *duplicateState = [NSDictionary dictionaryWithContentsOfFile:duplicateStatePath];
@@ -251,6 +284,11 @@ int main(void)
         CheckNear(reloaded.queuedPlayDuration, 20, @"cleared cue leaves the updated trimmed duration intact");
 
         [duplicate clearAndCleanup];
+        [movedLibrarySong clearAndCleanup];
+        [resetLibrarySong clearAndCleanup];
+        [sameSongColor clearAndCleanup];
+        [laterSetEntry clearAndCleanup];
+        [sameSong clearAndCleanup];
         [reloaded clearAndCleanup];
         [track clearAndCleanup];
         [[NSFileManager defaultManager] removeItemAtPath:directory error:nil];

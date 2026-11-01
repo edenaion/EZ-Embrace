@@ -857,6 +857,15 @@ static BOOL sNormalizeInternalDropTarget(NSInteger *row,
 
     } else if (action == @selector(toggleModernSong:)) {
         return [self _validateToggleModernSongWithMenuItem:menuItem];
+
+    } else if (action == @selector(useAutomaticSongType:)) {
+        return [self _validateSongTypeMenuItem:menuItem expected:TrackGenreHighlightOverrideAutomatic];
+
+    } else if (action == @selector(markAsTraditionalSong:)) {
+        return [self _validateSongTypeMenuItem:menuItem expected:TrackGenreHighlightOverrideNormal];
+
+    } else if (action == @selector(markAsModernSong:)) {
+        return [self _validateSongTypeMenuItem:menuItem expected:TrackGenreHighlightOverrideGreen];
     
     } else if (action == @selector(revealTime:)) {
         return [self _validateRevealTimeWithMenuItem:menuItem];
@@ -881,6 +890,20 @@ static BOOL sNormalizeInternalDropTarget(NSInteger *row,
 
     menuItem.state = hasGreen && hasNormal ? NSControlStateValueMixed :
         (hasGreen ? NSControlStateValueOn : NSControlStateValueOff);
+    return selectedTracks.count > 0;
+}
+
+
+- (BOOL) _validateSongTypeMenuItem:(NSMenuItem *)menuItem
+                           expected:(TrackGenreHighlightOverride)expected
+{
+    NSArray<Track *> *selectedTracks = [self selectedTracks];
+    NSUInteger matches = 0;
+    for (Track *track in selectedTracks) {
+        if (track.genreHighlightOverride == expected) matches++;
+    }
+    menuItem.state = matches == selectedTracks.count && matches ? NSControlStateValueOn :
+        (matches ? NSControlStateValueMixed : NSControlStateValueOff);
     return selectedTracks.count > 0;
 }
 
@@ -1184,13 +1207,49 @@ static BOOL sNormalizeInternalDropTarget(NSInteger *row,
 
     TrackGenreHighlightOverride newOverride = allGreen ?
         TrackGenreHighlightOverrideNormal : TrackGenreHighlightOverrideGreen;
-    for (Track *track in selectedTracks) {
-        track.genreHighlightOverride = newOverride;
-    }
+    [self _setSongTypeOverride:newOverride forSelectedTracks:selectedTracks];
+}
 
-    [self.tableView reloadDataForRowIndexes:self.tableView.selectedRowIndexes
-                              columnIndexes:[NSIndexSet indexSetWithIndexesInRange:
-                                  NSMakeRange(0, self.tableView.numberOfColumns)]];
+
+- (void) _setSongTypeOverride:(TrackGenreHighlightOverride)override
+             forSelectedTracks:(NSArray<Track *> *)selectedTracks
+{
+    if (!selectedTracks.count) return;
+    NSMutableSet<Track *> *targets = [NSMutableSet setWithArray:selectedTracks];
+    for (Track *candidate in _tracks) {
+        for (Track *selected in selectedTracks) {
+            if ([candidate isSameLibrarySongAsTrack:selected]) {
+                [targets addObject:candidate];
+                break;
+            }
+        }
+    }
+    for (Track *track in targets) track.genreHighlightOverride = override;
+    [self.tableView reloadData];
+}
+
+
+- (void) useAutomaticSongType:(id)sender
+{
+    EmbraceLogMethod();
+    [self _setSongTypeOverride:TrackGenreHighlightOverrideAutomatic
+             forSelectedTracks:[self selectedTracks]];
+}
+
+
+- (void) markAsTraditionalSong:(id)sender
+{
+    EmbraceLogMethod();
+    [self _setSongTypeOverride:TrackGenreHighlightOverrideNormal
+             forSelectedTracks:[self selectedTracks]];
+}
+
+
+- (void) markAsModernSong:(id)sender
+{
+    EmbraceLogMethod();
+    [self _setSongTypeOverride:TrackGenreHighlightOverrideGreen
+             forSelectedTracks:[self selectedTracks]];
 }
 
 

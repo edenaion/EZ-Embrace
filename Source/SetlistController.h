@@ -35,6 +35,9 @@ typedef NS_ENUM(NSInteger, PlaybackAction) {
 - (IBAction) toggleStopsAfterPlaying:(id)sender;
 - (IBAction) toggleMarkAsPlayed:(id)sender;
 - (IBAction) toggleModernSong:(id)sender;
+- (IBAction) useAutomaticSongType:(id)sender;
+- (IBAction) markAsTraditionalSong:(id)sender;
+- (IBAction) markAsModernSong:(id)sender;
 - (IBAction) showGearMenu:(id)sender;
 
 - (void) clear;

@@ -184,6 +184,8 @@ static NSDictionary *sReadLoudness(NSURL *internalURL)
             if (startTime) [trackData setObject:@(startTime / 1000.0) forKey:TrackKeyStartTime];
             if (stopTime)  [trackData setObject:@(stopTime  / 1000.0) forKey:TrackKeyStopTime];
             [trackData setObject:[mediaItem genre] ?: @"" forKey:TrackKeyGenre];
+            NSString *persistentIdentifier = mediaItem.persistentID.stringValue;
+            if (persistentIdentifier.length) trackData[@"libraryPersistentIdentifier"] = persistentIdentifier;
 
             NSString *location = [[mediaItem location] path];
             if (location) [result setObject:trackData forKey:location];

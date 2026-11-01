@@ -176,6 +176,7 @@ static NSString *sGetExpandedPath(NSString *inPath)
                 metadata.startTime = start;
                 metadata.stopTime = stop;
                 metadata.genre = [track[@"genre"] isKindOfClass:NSString.class] ? track[@"genre"] : @"";
+                metadata.persistentIdentifier = [track[@"id"] isKindOfClass:NSString.class] ? track[@"id"] : nil;
                 libraryMetadata[sGetExpandedPath(url.path)] = metadata;
             }
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -285,6 +286,8 @@ static NSString *sGetExpandedPath(NSString *inPath)
                     [metadata setStopTime: [[trackData objectForKey:TrackKeyStopTime]  doubleValue]];
                     id genre = [trackData objectForKey:TrackKeyGenre];
                     [metadata setGenre:[genre isKindOfClass:NSString.class] ? genre : @""];
+                    id persistentIdentifier = trackData[@"libraryPersistentIdentifier"];
+                    metadata.persistentIdentifier = [persistentIdentifier isKindOfClass:NSString.class] ? persistentIdentifier : nil;
 
                     [pathToLibraryMetadataMap setObject:metadata forKey:sGetExpandedPath(path)];
                 }
@@ -559,7 +562,9 @@ static NSString *sGetExpandedPath(NSString *inPath)
 
     return _startTime == otherMetadata->_startTime &&
            _stopTime  == otherMetadata->_stopTime &&
-           ((_genre == otherMetadata->_genre) || [_genre isEqualToString:otherMetadata->_genre]);
+           ((_genre == otherMetadata->_genre) || [_genre isEqualToString:otherMetadata->_genre]) &&
+           ((_persistentIdentifier == otherMetadata->_persistentIdentifier) ||
+            [_persistentIdentifier isEqualToString:otherMetadata->_persistentIdentifier]);
 }
 
 
@@ -568,7 +573,7 @@ static NSString *sGetExpandedPath(NSString *inPath)
     NSUInteger startTime = *(NSUInteger *)&_startTime;
     NSUInteger stopTime  = *(NSUInteger *)&_stopTime;
 
-    return startTime ^ stopTime ^ _genre.hash;
+    return startTime ^ stopTime ^ _genre.hash ^ _persistentIdentifier.hash;
 }
 
 

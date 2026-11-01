@@ -920,6 +920,27 @@ static NSInteger sAutoGapMaximum = 16;
 }
 
 
+- (IBAction) useAutomaticSongType:(id)sender
+{
+    EmbraceLogMethod();
+    [[self tracksController] useAutomaticSongType:self];
+}
+
+
+- (IBAction) markAsTraditionalSong:(id)sender
+{
+    EmbraceLogMethod();
+    [[self tracksController] markAsTraditionalSong:self];
+}
+
+
+- (IBAction) markAsModernSong:(id)sender
+{
+    EmbraceLogMethod();
+    [[self tracksController] markAsModernSong:self];
+}
+
+
 - (IBAction) showGearMenu:(id)sender
 {
     EmbraceLogMethod();
@@ -957,6 +978,9 @@ static NSInteger sAutoGapMaximum = 16;
         action == @selector(toggleStopsAfterPlaying:) ||
         action == @selector(toggleIgnoreAutoGap:) ||
         action == @selector(toggleModernSong:) ||
+        action == @selector(useAutomaticSongType:) ||
+        action == @selector(markAsTraditionalSong:) ||
+        action == @selector(markAsModernSong:) ||
         action == @selector(revealTime:))
     {
         return [[self tracksController] validateMenuItem:menuItem];

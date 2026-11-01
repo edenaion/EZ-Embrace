@@ -69,6 +69,7 @@ typedef NS_ENUM(NSInteger, TrackLabel) {
 @property (nonatomic) BOOL ignoresAutoGap;
 @property (nonatomic) TrackGenreHighlightOverride genreHighlightOverride;
 @property (nonatomic, copy) NSColor *setListColorOverride;
+- (BOOL) isSameLibrarySongAsTrack:(Track *)track;
 
 @property (nonatomic) NSTimeInterval expectedDuration;
 

@@ -111,6 +111,7 @@ static void QueueCueRestoreDefaults(void)
 @property (nonatomic) NSTableViewDropOperation syntheticDropOperation;
 @property (nonatomic) NSUInteger finishDragModificationCount;
 @property (nonatomic) NSUInteger targetedReloadCount;
+@property (nonatomic) NSUInteger fullReloadCount;
 @end
 
 @implementation QueueCueTestTableView
@@ -128,7 +129,7 @@ static void QueueCueRestoreDefaults(void)
 {
     self.syntheticSelectedRows = indexes;
 }
-- (void)reloadData {}
+- (void)reloadData { self.fullReloadCount++; }
 - (void)reloadDataForRowIndexes:(NSIndexSet *)rowIndexes columnIndexes:(NSIndexSet *)columnIndexes
 {
     self.targetedReloadCount++;
@@ -370,8 +371,8 @@ int main(void)
         [controller toggleModernSong:nil];
         Check(a.genreHighlightOverride == TrackGenreHighlightOverrideGreen,
             @"Is Modern Song forces Tango-Inst into modern behavior");
-        Check(tableView.targetedReloadCount == 1,
-            @"modern-song toggle refreshes selected Set List row");
+        Check(tableView.fullReloadCount == 1,
+            @"song-type change refreshes Set List rows that can share a song identity");
         Check([controller validateMenuItem:modernItem] && modernItem.state == NSControlStateValueOn,
             @"Is Modern Song reflects forced-modern state");
         [controller toggleModernSong:nil];
@@ -379,6 +380,23 @@ int main(void)
             @"second Is Modern Song action forces traditional behavior");
         Check([controller validateMenuItem:modernItem] && modernItem.state == NSControlStateValueOff,
             @"Is Modern Song reflects forced-traditional state");
+        NSMenuItem *automaticItem = [[NSMenuItem alloc] initWithTitle:@"Use Genre Automatically"
+            action:@selector(useAutomaticSongType:) keyEquivalent:@""];
+        NSMenuItem *traditionalItem = [[NSMenuItem alloc] initWithTitle:@"Tango / Vals / Milonga"
+            action:@selector(markAsTraditionalSong:) keyEquivalent:@""];
+        NSMenuItem *otherItem = [[NSMenuItem alloc] initWithTitle:@"Modern / Other"
+            action:@selector(markAsModernSong:) keyEquivalent:@""];
+        Check([controller validateMenuItem:traditionalItem] && traditionalItem.state == NSControlStateValueOn,
+            @"Song Type menu marks the saved traditional correction");
+        [controller useAutomaticSongType:nil];
+        Check(a.genreHighlightOverride == TrackGenreHighlightOverrideAutomatic &&
+              [controller validateMenuItem:automaticItem] && automaticItem.state == NSControlStateValueOn,
+            @"Song Type menu can return to automatic genre classification");
+        [controller markAsModernSong:nil];
+        Check(a.genreHighlightOverride == TrackGenreHighlightOverrideGreen &&
+              [controller validateMenuItem:otherItem] && otherItem.state == NSControlStateValueOn,
+            @"Song Type menu can save Modern or Other behavior");
+        [controller markAsTraditionalSong:nil];
         a.trackStatus = TrackStatusPlayed;
         Check([controller validateMenuItem:modernItem],
             @"modern-song toggle remains available for a played row before requeue");

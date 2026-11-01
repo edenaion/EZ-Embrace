@@ -17,6 +17,9 @@
 #import "InterfaceAppearance.h"
 #import "TrackCueController.h"
 
+static NSString * const TrackRowColorSwatchesDefaultsKey = @"trackRowColorSwatches.v1";
+static const NSInteger TrackRowColorSwatchCount = 6;
+
 
 @interface TrackColorPanelController : NSObject
 + (instancetype) sharedController;
@@ -27,6 +30,11 @@
 @implementation TrackColorPanelController {
     Track *_track;
     NSButton *_automaticButton;
+    NSButton *_saveSwatchButton;
+    NSButton *_clearSwatchButton;
+    NSArray<NSButton *> *_swatchButtons;
+    NSMutableArray *_swatchColors;
+    NSInteger _selectedSwatchIndex;
 }
 
 + (instancetype) sharedController
@@ -39,14 +47,128 @@
 
 - (NSView *) _accessoryView
 {
-    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 210, 36)];
-    _automaticButton = [NSButton buttonWithTitle:NSLocalizedString(@"Use Automatic Color", nil)
+    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 330, 126)];
+    NSTextField *explanation = [NSTextField wrappingLabelWithString:
+        NSLocalizedString(@"Row color only. To change Tango or Modern behavior, right-click the song.", nil)];
+    explanation.alignment = NSTextAlignmentCenter;
+    explanation.frame = NSMakeRect(8, 98, 314, 28);
+    [view addSubview:explanation];
+
+    NSTextField *savedLabel = [NSTextField labelWithString:NSLocalizedString(@"Saved colors", nil)];
+    savedLabel.alignment = NSTextAlignmentCenter;
+    savedLabel.frame = NSMakeRect(8, 78, 314, 18);
+    [view addSubview:savedLabel];
+
+    NSMutableArray<NSButton *> *buttons = [NSMutableArray array];
+    CGFloat startX = 63;
+    for (NSInteger index = 0; index < TrackRowColorSwatchCount; index++) {
+        NSButton *button = [[NSButton alloc] initWithFrame:NSMakeRect(startX + index * 35, 50, 28, 28)];
+        button.title = @"";
+        button.imagePosition = NSImageOnly;
+        button.tag = index;
+        button.target = self;
+        button.action = @selector(_swatchClicked:);
+        [view addSubview:button];
+        [buttons addObject:button];
+    }
+    _swatchButtons = [buttons copy];
+
+    _saveSwatchButton = [NSButton buttonWithTitle:NSLocalizedString(@"Save Current Color", nil)
+                                             target:self action:@selector(_saveCurrentColorToSwatch:)];
+    [_saveSwatchButton sizeToFit];
+    _saveSwatchButton.frame = NSMakeRect(52, 24, 135, 24);
+    [view addSubview:_saveSwatchButton];
+    _clearSwatchButton = [NSButton buttonWithTitle:NSLocalizedString(@"Clear Selected", nil)
+                                              target:self action:@selector(_clearSelectedSwatch:)];
+    [_clearSwatchButton sizeToFit];
+    _clearSwatchButton.frame = NSMakeRect(191, 24, 105, 24);
+    [view addSubview:_clearSwatchButton];
+
+    _automaticButton = [NSButton buttonWithTitle:NSLocalizedString(@"Reset Row Color", nil)
                                            target:self action:@selector(_useAutomaticColor:)];
     [_automaticButton sizeToFit];
-    _automaticButton.frame = NSMakeRect(floor((210 - NSWidth(_automaticButton.frame)) / 2), 4,
+    _automaticButton.frame = NSMakeRect(floor((330 - NSWidth(_automaticButton.frame)) / 2), 0,
                                         NSWidth(_automaticButton.frame), NSHeight(_automaticButton.frame));
     [view addSubview:_automaticButton];
+    [self _updateSwatchButtons];
     return view;
+}
+
+- (void) _loadSwatches
+{
+    NSDictionary *saved = [NSUserDefaults.standardUserDefaults dictionaryForKey:TrackRowColorSwatchesDefaultsKey];
+    _swatchColors = [NSMutableArray arrayWithCapacity:TrackRowColorSwatchCount];
+    for (NSInteger index = 0; index < TrackRowColorSwatchCount; index++) {
+        NSData *data = saved[[NSString stringWithFormat:@"%ld", (long)index]];
+        NSError *error = nil;
+        NSColor *color = [data isKindOfClass:NSData.class] ?
+            [NSKeyedUnarchiver unarchivedObjectOfClass:NSColor.class fromData:data error:&error] : nil;
+        [_swatchColors addObject:color ?: NSNull.null];
+    }
+    _selectedSwatchIndex = 0;
+}
+
+- (void) _saveSwatches
+{
+    NSMutableDictionary *saved = [NSMutableDictionary dictionary];
+    [_swatchColors enumerateObjectsUsingBlock:^(id value, NSUInteger index, BOOL *stop) {
+        if (![value isKindOfClass:NSColor.class]) return;
+        NSError *error = nil;
+        NSData *data = [NSKeyedArchiver archivedDataWithRootObject:value requiringSecureCoding:YES error:&error];
+        if (data && !error) saved[[NSString stringWithFormat:@"%lu", (unsigned long)index]] = data;
+    }];
+    [NSUserDefaults.standardUserDefaults setObject:saved forKey:TrackRowColorSwatchesDefaultsKey];
+}
+
+- (void) _updateSwatchButtons
+{
+    for (NSInteger index = 0; index < (NSInteger)_swatchButtons.count; index++) {
+        NSButton *button = _swatchButtons[index];
+        id value = index < (NSInteger)_swatchColors.count ? _swatchColors[index] : NSNull.null;
+        NSColor *color = [value isKindOfClass:NSColor.class] ? value : nil;
+        button.bordered = index == _selectedSwatchIndex;
+        button.bezelStyle = NSBezelStyleCircular;
+        button.image = [NSImage imageWithSystemSymbolName:color ? @"circle.fill" : @"circle"
+                                 accessibilityDescription:NSLocalizedString(@"Saved row color", nil)];
+        button.contentTintColor = color ?: NSColor.secondaryLabelColor;
+        button.toolTip = color ? NSLocalizedString(@"Click to apply this saved row color.", nil) :
+            NSLocalizedString(@"Empty slot. Select it, then press Save Current Color.", nil);
+        button.accessibilityLabel = [NSString stringWithFormat:color ?
+            NSLocalizedString(@"Saved row color %ld", nil) : NSLocalizedString(@"Empty row color slot %ld", nil),
+            (long)index + 1];
+    }
+    id selected = _selectedSwatchIndex < (NSInteger)_swatchColors.count ?
+        _swatchColors[_selectedSwatchIndex] : NSNull.null;
+    _clearSwatchButton.enabled = [selected isKindOfClass:NSColor.class];
+}
+
+- (void) _swatchClicked:(NSButton *)sender
+{
+    _selectedSwatchIndex = sender.tag;
+    id value = _swatchColors[_selectedSwatchIndex];
+    if ([value isKindOfClass:NSColor.class]) {
+        NSColorPanel *panel = NSColorPanel.sharedColorPanel;
+        panel.color = value;
+        [self _colorChanged:panel];
+    }
+    [self _updateSwatchButtons];
+}
+
+- (void) _saveCurrentColorToSwatch:(id)sender
+{
+    NSColor *color = [NSColorPanel.sharedColorPanel.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    if (!color) return;
+    _swatchColors[_selectedSwatchIndex] = [NSColor colorWithSRGBRed:color.redComponent
+        green:color.greenComponent blue:color.blueComponent alpha:1];
+    [self _saveSwatches];
+    [self _updateSwatchButtons];
+}
+
+- (void) _clearSelectedSwatch:(id)sender
+{
+    _swatchColors[_selectedSwatchIndex] = NSNull.null;
+    [self _saveSwatches];
+    [self _updateSwatchButtons];
 }
 
 - (void) _positionPanel:(NSColorPanel *)panel nearMouseLocation:(NSPoint)mouseLocation
@@ -91,6 +213,7 @@
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_colorPanelWillClose:)
         name:NSWindowWillCloseNotification object:panel];
     BOOL hasOverride = track.setListColorOverride != nil;
+    [self _loadSwatches];
     panel.showsAlpha = NO;
     panel.mode = NSColorPanelModeWheel;
     panel.accessoryView = [self _accessoryView];
@@ -98,7 +221,7 @@
     panel.target = self;
     panel.action = @selector(_colorChanged:);
     _automaticButton.enabled = hasOverride;
-    panel.title = [NSString stringWithFormat:NSLocalizedString(@"Track Color: %@", nil), track.title ?: @""];
+    panel.title = [NSString stringWithFormat:NSLocalizedString(@"Row Color: %@", nil), track.title ?: @""];
     [self _positionPanel:panel nearMouseLocation:NSEvent.mouseLocation];
     [panel makeKeyAndOrderFront:nil];
 }
@@ -110,6 +233,10 @@
     panel.action = NULL;
     panel.accessoryView = nil;
     _automaticButton = nil;
+    _saveSwatchButton = nil;
+    _clearSwatchButton = nil;
+    _swatchButtons = nil;
+    _swatchColors = nil;
     _track = nil;
 }
 
@@ -578,7 +705,8 @@
     NSString *label = [NSString stringWithFormat:NSLocalizedString(@"Color for %@. %@", nil),
         track.title ?: @"", state];
     _colorButton.accessibilityLabel = label;
-    _colorButton.toolTip = label;
+    _colorButton.toolTip = [label stringByAppendingString:
+        NSLocalizedString(@" Row color only. Right-click the song to change Tango or Modern behavior.", nil)];
 }
 
 
