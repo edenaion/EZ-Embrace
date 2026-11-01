@@ -2,6 +2,7 @@
 // MIT License (or) 1-clause BSD License
 
 #import <Foundation/Foundation.h>
+#import "TrackGenre.h"
 
 extern NSString * const TrackDidModifyTitleNotificationName;
 extern NSString * const TrackDidModifyExternalURLNotificationName;
@@ -66,6 +67,7 @@ typedef NS_ENUM(NSInteger, TrackLabel) {
 @property (nonatomic) TrackStatus trackStatus;
 @property (nonatomic) BOOL stopsAfterPlaying;
 @property (nonatomic) BOOL ignoresAutoGap;
+@property (nonatomic) TrackGenreHighlightOverride genreHighlightOverride;
 
 @property (nonatomic) NSTimeInterval expectedDuration;
 

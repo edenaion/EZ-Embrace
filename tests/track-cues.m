@@ -128,6 +128,12 @@ int main(void)
         Check(error == nil, @"create disposable file for bookmark/persistence path");
         Track *track = MakeTrack([NSURL fileURLWithPath:fixturePath]);
 
+        Check(track.genreHighlightOverride == TrackGenreHighlightOverrideAutomatic,
+            @"new tracks use automatic genre highlighting");
+        track.genreHighlightOverride = TrackGenreHighlightOverrideGreen;
+        Check(track.genreHighlightOverride == TrackGenreHighlightOverrideGreen,
+            @"track accepts manual green highlight override");
+
         CheckNear(track.cueStartTime, 0, @"new tracks default to cue zero");
         CheckNear(track.cueOffset, 0, @"zero cue has no imported-play offset");
         CheckNear(track.queuedPlayDuration, 120, @"zero cue preserves full queue duration");
@@ -170,10 +176,14 @@ int main(void)
         NSString *statePath = [directory stringByAppendingPathComponent:
                                [NSString stringWithFormat:@"Tracks/%@.plist", track.UUID.UUIDString]];
         NSDictionary *saved = [NSDictionary dictionaryWithContentsOfFile:statePath];
+        Check([saved[@"genreHighlightOverride"] integerValue] == TrackGenreHighlightOverrideGreen,
+            @"genre highlight override is serialized with the Set List entry");
         CheckNear([saved[@"cueStartTime"] doubleValue], 50, @"nonzero cue is serialized with the per-entry state");
         Track *reloaded = [Track trackWithUUID:track.UUID];
         Check(reloaded != nil && WaitUntilResolved(reloaded, 5), @"reload per-entry state through production initializer");
         CheckNear(reloaded.cueStartTime, 50, @"cue survives a persisted-state reload");
+        Check(reloaded.genreHighlightOverride == TrackGenreHighlightOverrideGreen,
+            @"genre highlight override survives persisted-state reload");
 
         MusicAppManager *manager = [MusicAppManager sharedInstance];
         MusicAppLibraryMetadata *metadata = [MusicAppLibraryMetadata new];

@@ -3,6 +3,12 @@
 
 #import <Foundation/Foundation.h>
 
+typedef NS_ENUM(NSInteger, TrackGenreHighlightOverride) {
+    TrackGenreHighlightOverrideAutomatic = 0,
+    TrackGenreHighlightOverrideGreen,
+    TrackGenreHighlightOverrideNormal
+};
+
 // One classifier owns both the Set List highlight and playback automation.
 // Compacting punctuation lets common library labels such as "Tango-Inst",
 // "Alternative Vals" and "MilongaAlt" stay in the traditional group. Cant
@@ -21,4 +27,12 @@ NS_INLINE BOOL TrackGenreUsesUpcomingHighlight(NSString *genre)
         if ([part caseInsensitiveCompare:@"cant"] == NSOrderedSame) return NO;
     }
     return YES;
+}
+
+NS_INLINE BOOL TrackGenreUsesUpcomingHighlightWithOverride(
+    NSString *genre, TrackGenreHighlightOverride override)
+{
+    if (override == TrackGenreHighlightOverrideGreen) return YES;
+    if (override == TrackGenreHighlightOverrideNormal) return NO;
+    return TrackGenreUsesUpcomingHighlight(genre);
 }

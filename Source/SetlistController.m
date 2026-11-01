@@ -913,6 +913,13 @@ static NSInteger sAutoGapMaximum = 16;
 }
 
 
+- (IBAction) toggleGenreHighlight:(id)sender
+{
+    EmbraceLogMethod();
+    [[self tracksController] toggleGenreHighlight:self];
+}
+
+
 - (IBAction) showGearMenu:(id)sender
 {
     EmbraceLogMethod();
@@ -949,6 +956,7 @@ static NSInteger sAutoGapMaximum = 16;
         action == @selector(toggleMarkAsPlayed:) ||
         action == @selector(toggleStopsAfterPlaying:) ||
         action == @selector(toggleIgnoreAutoGap:) ||
+        action == @selector(toggleGenreHighlight:) ||
         action == @selector(revealTime:))
     {
         return [[self tracksController] validateMenuItem:menuItem];

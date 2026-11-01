@@ -23,6 +23,7 @@ static NSString * const sIgnoresAutoGapKey    = @"ignoresAutoGap";
 static NSString * const sStatusKey            = @"trackStatus";
 static NSString * const sPlayedTimeKey        = @"playedTime";
 static NSString * const sCueStartTimeKey      = @"cueStartTime";
+static NSString * const sGenreHighlightOverrideKey = @"genreHighlightOverride";
 
 
 @interface Track ()
@@ -379,6 +380,9 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
     if (_trackStatus)    [state setObject:@(_trackStatus)       forKey:sStatusKey];
     if (_playedTime)     [state setObject:@(_playedTime)        forKey:sPlayedTimeKey];
     if (_cueStartTime)   [state setObject:@(_cueStartTime)      forKey:sCueStartTimeKey];
+    if (_genreHighlightOverride != TrackGenreHighlightOverrideAutomatic) {
+        [state setObject:@(_genreHighlightOverride) forKey:sGenreHighlightOverrideKey];
+    }
 
     if (_stopsAfterPlaying) {
         [state setObject:@YES forKey:sStopsAfterPlayingKey];
@@ -897,6 +901,21 @@ static NSURL *sGetInternalURLForUUID(NSUUID *UUID, NSString *extension)
             [self setStopsAfterPlaying:NO];
         }
         
+        _dirty = YES;
+        [self _saveStateImmediately:NO];
+    }
+}
+
+
+- (void) setGenreHighlightOverride:(TrackGenreHighlightOverride)genreHighlightOverride
+{
+    if (genreHighlightOverride < TrackGenreHighlightOverrideAutomatic ||
+        genreHighlightOverride > TrackGenreHighlightOverrideNormal) {
+        genreHighlightOverride = TrackGenreHighlightOverrideAutomatic;
+    }
+
+    if (_genreHighlightOverride != genreHighlightOverride) {
+        _genreHighlightOverride = genreHighlightOverride;
         _dirty = YES;
         [self _saveStateImmediately:NO];
     }

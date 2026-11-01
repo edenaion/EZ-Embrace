@@ -854,12 +854,36 @@ static BOOL sNormalizeInternalDropTarget(NSInteger *row,
  
     } else if (action == @selector(toggleIgnoreAutoGap:)) {
         return [self _validateToggleIgnoreAutoGapWithMenuItem:menuItem];
+
+    } else if (action == @selector(toggleGenreHighlight:)) {
+        return [self _validateToggleGenreHighlightWithMenuItem:menuItem];
     
     } else if (action == @selector(revealTime:)) {
         return [self _validateRevealTimeWithMenuItem:menuItem];
     }
     
     return YES;
+}
+
+
+- (BOOL) _validateToggleGenreHighlightWithMenuItem:(NSMenuItem *)menuItem
+{
+    NSArray<Track *> *selectedTracks = [self selectedTracks];
+    BOOL hasGreen = NO;
+    BOOL hasNormal = NO;
+    BOOL allQueued = selectedTracks.count > 0;
+
+    for (Track *track in selectedTracks) {
+        allQueued &= track.trackStatus == TrackStatusQueued;
+        BOOL green = TrackGenreUsesUpcomingHighlightWithOverride(
+            track.genre, track.genreHighlightOverride);
+        hasGreen |= green;
+        hasNormal |= !green;
+    }
+
+    menuItem.state = hasGreen && hasNormal ? NSControlStateValueMixed :
+        (hasGreen ? NSControlStateValueOn : NSControlStateValueOff);
+    return allQueued;
 }
 
 
@@ -1144,6 +1168,31 @@ static BOOL sNormalizeInternalDropTarget(NSInteger *row,
             [track setIgnoresAutoGap:![track ignoresAutoGap]];
         }
     }
+}
+
+
+- (void) toggleGenreHighlight:(id)sender
+{
+    EmbraceLogMethod();
+
+    if (![self _validateToggleGenreHighlightWithMenuItem:nil]) return;
+
+    NSArray<Track *> *selectedTracks = [self selectedTracks];
+    BOOL allGreen = selectedTracks.count > 0;
+    for (Track *track in selectedTracks) {
+        allGreen &= TrackGenreUsesUpcomingHighlightWithOverride(
+            track.genre, track.genreHighlightOverride);
+    }
+
+    TrackGenreHighlightOverride newOverride = allGreen ?
+        TrackGenreHighlightOverrideNormal : TrackGenreHighlightOverrideGreen;
+    for (Track *track in selectedTracks) {
+        track.genreHighlightOverride = newOverride;
+    }
+
+    [self.tableView reloadDataForRowIndexes:self.tableView.selectedRowIndexes
+                              columnIndexes:[NSIndexSet indexSetWithIndexesInRange:
+                                  NSMakeRange(0, self.tableView.numberOfColumns)]];
 }
 
 

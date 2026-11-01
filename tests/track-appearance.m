@@ -88,6 +88,7 @@ NSArray<NSDictionary<NSString *, id> *> *AuditionOutputDevices(void) { return @[
 - (TrackStatus) trackStatus { return sTrackStatus; }
 - (void) setTrackStatus:(TrackStatus)trackStatus { sTrackStatus = trackStatus; }
 - (NSString *) genre { return sTrackGenre; }
+- (TrackGenreHighlightOverride) genreHighlightOverride { return TrackGenreHighlightOverrideAutomatic; }
 @end
 #pragma clang diagnostic pop
 
@@ -185,6 +186,14 @@ int main(void)
             @{ @"title": @"Tabbed Tango",          @"genre": @"Tango\tCant",          @"green": @NO },
             @{ @"title": @"Newline Vals",          @"genre": @"Tango\nVals",          @"green": @NO },
             @{ @"title": @"Tango Inst Compact",    @"genre": @"TangoInst",            @"green": @NO },
+            @{ @"title": @"Reported Tango Inst",   @"genre": @"Tango-Inst",           @"green": @NO },
+            @{ @"title": @"Reported Lower Inst",   @"genre": @"Tango-inst",           @"green": @NO },
+            @{ @"title": @"Reported Spaced Inst",  @"genre": @"Tango- inst",          @"green": @NO },
+            @{ @"title": @"Reported Spaced Cant",  @"genre": @"Tango- Cant",          @"green": @NO },
+            @{ @"title": @"Lower Tango Inst",      @"genre": @"tango-inst",           @"green": @NO },
+            @{ @"title": @"Mixed Tango Inst",      @"genre": @"tAnGo-InSt",           @"green": @NO },
+            @{ @"title": @"Spaced Tango Inst",     @"genre": @"Tango - Inst",         @"green": @NO },
+            @{ @"title": @"Wide Tango Inst",       @"genre": @"Tango   -    Inst",    @"green": @NO },
             @{ @"title": @"Inst Tango Compact",    @"genre": @"InstTango",            @"green": @NO },
             @{ @"title": @"Tango Instrumental",    @"genre": @"Tango Instrumental",   @"green": @NO },
             @{ @"title": @"Instrumental Tango",    @"genre": @"Instrumental-Tango",   @"green": @NO },
@@ -249,6 +258,25 @@ int main(void)
             Check(TrackGenreUsesUpcomingHighlight(modifier),
                 [NSString stringWithFormat:@"Modifier without a dance genre should stay green: %@", modifier]);
         }
+        NSArray<NSString *> *hyphenSpaces = @[ @"", @" ", @"  ", @"     " ];
+        for (NSString *leftSpaces in hyphenSpaces) {
+            for (NSString *rightSpaces in hyphenSpaces) {
+                for (NSString *root in @[ @"tango", @"Tango", @"TANGO", @"TaNgO" ]) {
+                    for (NSString *followingWord in @[ @"inst", @"Cant", @"ROCK", @"anything", @"Another Word" ]) {
+                        NSString *genre = [NSString stringWithFormat:@"%@%@-%@%@",
+                            root, leftSpaces, rightSpaces, followingWord];
+                        Check(!TrackGenreUsesUpcomingHighlight(genre),
+                            [NSString stringWithFormat:@"Tango hyphen permutation should stay normal: %@", genre]);
+                    }
+                }
+            }
+        }
+        Check(TrackGenreUsesUpcomingHighlightWithOverride(@"Tango-Inst", TrackGenreHighlightOverrideGreen),
+            @"Manual green override wins over Tango classification");
+        Check(!TrackGenreUsesUpcomingHighlightWithOverride(@"Electronic", TrackGenreHighlightOverrideNormal),
+            @"Manual normal override wins over non-Tango classification");
+        Check(!TrackGenreUsesUpcomingHighlightWithOverride(@"Tango-Inst", TrackGenreHighlightOverrideAutomatic),
+            @"Automatic override mode preserves Tango classification");
         NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 500, 300)
             styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
         FontFixtureCell *cell = [[FontFixtureCell alloc] initWithFrame:NSMakeRect(0, 0, 500, 39)];

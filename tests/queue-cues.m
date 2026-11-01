@@ -110,6 +110,7 @@ static void QueueCueRestoreDefaults(void)
 @property (nonatomic) NSInteger syntheticDropRow;
 @property (nonatomic) NSTableViewDropOperation syntheticDropOperation;
 @property (nonatomic) NSUInteger finishDragModificationCount;
+@property (nonatomic) NSUInteger targetedReloadCount;
 @end
 
 @implementation QueueCueTestTableView
@@ -128,6 +129,10 @@ static void QueueCueRestoreDefaults(void)
     self.syntheticSelectedRows = indexes;
 }
 - (void)reloadData {}
+- (void)reloadDataForRowIndexes:(NSIndexSet *)rowIndexes columnIndexes:(NSIndexSet *)columnIndexes
+{
+    self.targetedReloadCount++;
+}
 - (void)setDropRow:(NSInteger)row dropOperation:(NSTableViewDropOperation)dropOperation
 {
     self.syntheticDropRow = row;
@@ -354,6 +359,30 @@ int main(void)
         CheckSavedUUIDOrder(@[ a.UUID.UUIDString, b.UUID.UUIDString, c.UUID.UUIDString ],
                             @"production saveState writes the initial entry order to isolated defaults");
         Check(controller.firstQueuedTrack == a, @"the planned next provider starts with the first queued entry");
+
+        [a setValue:@"Tango-Inst" forKey:@"genre"];
+        tableView.syntheticSelectedRows = [NSIndexSet indexSetWithIndex:0];
+        NSMenuItem *greenItem = [[NSMenuItem alloc] initWithTitle:@"Highlight Green"
+            action:@selector(toggleGenreHighlight:) keyEquivalent:@""];
+        Check([controller validateMenuItem:greenItem], @"green override menu enables for a selected Set List row");
+        Check(greenItem.state == NSControlStateValueOff,
+            @"Tango-Inst starts with the green override menu unchecked");
+        [controller toggleGenreHighlight:nil];
+        Check(a.genreHighlightOverride == TrackGenreHighlightOverrideGreen,
+            @"right-click action forces Tango-Inst green");
+        Check(tableView.targetedReloadCount == 1,
+            @"right-click green override refreshes selected Set List row");
+        Check([controller validateMenuItem:greenItem] && greenItem.state == NSControlStateValueOn,
+            @"green override menu reflects forced-green state");
+        [controller toggleGenreHighlight:nil];
+        Check(a.genreHighlightOverride == TrackGenreHighlightOverrideNormal,
+            @"second right-click action forces Tango-Inst normal");
+        Check([controller validateMenuItem:greenItem] && greenItem.state == NSControlStateValueOff,
+            @"green override menu reflects forced-normal state");
+        a.trackStatus = TrackStatusPlayed;
+        Check(![controller validateMenuItem:greenItem],
+            @"green override menu disables when a row is no longer Up Next");
+        a.trackStatus = TrackStatusQueued;
 
         MoveRows(controller, [NSIndexSet indexSetWithIndex:0], 3, NSDragOperationGeneric, @"move a queued entry forward");
         AssertTrackOrder(controller, @[ b, c, a ], @"forward move reorders the original entry objects");

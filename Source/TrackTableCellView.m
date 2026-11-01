@@ -360,6 +360,7 @@
         @"comments",
         @"grouping",
         @"genre",
+        @"genreHighlightOverride",
         @"beatsPerMinute",
         @"trackStatus",
         @"trackLabel",
@@ -693,7 +694,8 @@
         TrackTableRowView *trackRow = (TrackTableRowView *)rowView;
         [trackRow setPlaying:trackStatus == TrackStatusPlaying && [[Preferences sharedInstance] showsPlayingStatus]];
         trackRow.highlightsUpcomingOtherGenre = trackStatus == TrackStatusQueued &&
-            TrackGenreUsesUpcomingHighlight(self.track.genre);
+            TrackGenreUsesUpcomingHighlightWithOverride(
+                self.track.genre, self.track.genreHighlightOverride);
     }
     BOOL drawsOtherGenreHighlight = [rowView isKindOfClass:TrackTableRowView.class] &&
         [(TrackTableRowView *)rowView drawsUpcomingOtherGenreHighlight];
